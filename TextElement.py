@@ -7,14 +7,14 @@ from Element import Element
 
 class TextElement(Element):
     """
-    Represents a text element with optional content, position, padding, bounding box,
+    Represents a text element with optional text, position, padding, bounding box,
     start and end times, and font.
     """
 
     def __init__(
         self,
-        content: Optional[str] = None,
-        position: Optional[Tuple[int, int]] = None,
+        text: str,
+        position: Optional[Tuple[float, float]] = None,
         bounding_box: Optional[Tuple[int, int, int, int]] = None,
         padding: Optional[int] = None,
         start: Optional[timedelta] = None,
@@ -28,7 +28,7 @@ class TextElement(Element):
         Initializes a TextElement object.
 
         Args:
-            content (Optional[str]): The text content.
+            text (Optional[str]): The text content.
             position (Optional[Tuple[int, int]]): The (x, y) coordinates of the text.
             padding (Optional[int]): The padding around the text.
             bounding_box (Optional[Tuple[int, int, int, int]]): The bounding box coordinates (left, top, right, bottom).
@@ -38,21 +38,21 @@ class TextElement(Element):
         """
         super().__init__(position=position, bounding_box=bounding_box)
 
-        self.content = content
+        self.text = text
 
         self.padding = padding
 
         self.start = start
         self.end = end
 
+        self.text_alignment = text_alignment
+        self.text_anchor = text_anchor
+        self.text_color = text_color
+
         if font is not None:
             self.font = font
         else:
             self.set_font()
-
-        self.text_alignment = text_alignment
-        self.text_anchor = text_anchor
-        self.text_color = text_color
 
     def __repr__(self) -> str:
         """
@@ -60,7 +60,7 @@ class TextElement(Element):
         """
         return (
             f"TextElement("
-            f"content={self.content}, "
+            f"text={self.text}, "
             f"position={self.position}, "
             f"padding={self.padding}, "
             f"bounding_box={self._bounding_box}, "
@@ -81,12 +81,12 @@ class TextElement(Element):
                 "Font set failed: font must be an instance of ImageFont.FreeTypeFont"
             )
         self._font = font
-        self._regenerate_bounding_box()
+        self.generate_bounding_box()
 
     def set_font(self, font_path: str = "calibri.ttf", font_size: float = 11) -> None:
         try:
             self._font = ImageFont.truetype(font_path, font_size)
-            self._regenerate_bounding_box()
+            self.generate_bounding_box()
         except OSError:
             raise OSError(f"Font not found at {font_path}")
         except Exception as e:
@@ -103,33 +103,21 @@ class TextElement(Element):
         self.set_font(font_path, self._font.size)
 
     def generate_bounding_box(self) -> None:
-        if self.position is None:
-            raise ValueError("Position must be set before generating bounding box.")
         if self.font is None:
             raise ValueError("Font must be set before generating bounding box.")
-        if self.content is None:
-            raise ValueError("Content must be set before generating bounding box.")
+        if self.text is None:
+            raise ValueError("Text must be set before generating bounding box.")
 
         temp_image = Image.new("RGB", (0, 0))
         left, top, right, bottom = ImageDraw.Draw(temp_image).textbbox(
-            self.position,
-            self.content,
+            (0, 0),
+            self.text,
             self.font,
             anchor=self.text_anchor,
             align=self.text_alignment,
         )
 
-        self.bounding_box = (
-            left - self.x,
-            top - self.y,
-            right - self.x,
-            bottom - self.y,
-        )
-
-    def _regenerate_bounding_box(self):
-        if self.bounding_box is None:
-            return
-        self.generate_bounding_box()
+        self.bounding_box = (left, top, right, bottom)
 
     def draw(self, image: Image.Image) -> None:
         """
@@ -138,13 +126,13 @@ class TextElement(Element):
         Args:
             image: The PIL Image object to draw on.
         """
-        if not self.content or not self.position or not self.font:
-            raise ValueError("Content, position, and font must be set before drawing.")
+        if not self.text or not self.position or not self.font:
+            raise ValueError("Text, position, and font must be set before drawing.")
 
         draw = ImageDraw.Draw(image)
         draw.text(
             self.position,
-            self.content,
+            self.text,
             font=self.font,
             fill=self.text_color,
             anchor=self.text_anchor,
@@ -161,7 +149,7 @@ def main():
 
     # font = ImageFont.truetype("arial.ttf", 24) #replace with your font.
     # text_element = TextElement(
-    #     content="Hello, world!",
+    #     text="Hello, world!",
     #     position=(100, 200),
     #     padding=10,
     #     bounding_box=(50, 150, 250, 250),
@@ -178,10 +166,10 @@ def main():
 
     for subtile in subtitles:
         text_element = TextElement(
-            content=subtile.content, start=subtile.start, end=subtile.end
+            text=subtile.content, start=subtile.start, end=subtile.end
         )
         text_element.position = (random.uniform(0, size), random.uniform(0, size))
-        text_element.generate_bounding_box()
+        # text_element.generate_bounding_box()
         text_elements.append(text_element)
 
     image = Image.new("RGB", (size, size), color="white")
@@ -193,11 +181,11 @@ def main():
         if size % 2 == 0:
             text_element.set_font_path(r"c:\\windows\\fonts\\brushsci.ttf")
         text_element.draw(image)
-        # draw.rectangle(text_element.bounding_box, outline="green")
-        # draw.rectangle(text_element.absolute_bounding_box, outline="yellow")
+        draw.rectangle(text_element.bounding_box, outline="green")
+        draw.rectangle(text_element.absolute_bounding_box, outline="yellow")
         size += 1
         print(f"{text_element.position}, {text_element.bounding_box}")
-        # print(text_element.content)
+        # print(text_element.text)
 
     image.show()
 
