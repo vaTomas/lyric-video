@@ -20,7 +20,7 @@ class TextElement(Element):
         start: Optional[timedelta] = None,
         end: Optional[timedelta] = None,
         font: Optional[ImageFont.FreeTypeFont] = None,
-        text_alignment="left",
+        text_alignment="center",
         text_anchor="mm",
         text_color="black",
     ):

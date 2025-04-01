@@ -64,23 +64,40 @@ class Scene:
 
     @staticmethod
     def is_box_inside(
-        box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]
+        inside_box: Tuple[float, float, float, float],
+        outside_box: Tuple[float, float, float, float],
+        outside_box_margin: Union[int, float] = 0,
+        inside_box_padding: Union[int, float] = 0,
     ) -> bool:
         """
-        Checks if box1 is completely inside box2.
+        Checks if inside_box is completely inside outside_box, considering margins and padding.
 
         Args:
-            box1: (left, top, right, bottom) coordinates of box1.
-            box2: (left, top, right, bottom) coordinates of box2.
+            inside_box: (left, top, right, bottom) coordinates of the inside box.
+            outside_box: (left, top, right, bottom) coordinates of the outside box.
+            outside_box_margin: Margin applied to the outside box.
+            inside_box_padding: Padding applied to the inside box.
 
         Returns:
-            True if box1 is completely inside box2, False otherwise.
+            True if inside_box is completely inside outside_box, False otherwise.
         """
-        left1, top1, right1, bottom1 = box1
-        left2, top2, right2, bottom2 = box2
+
+        if not all(
+            isinstance(coord, (int, float))
+            for box in (inside_box, outside_box)
+            for coord in box
+        ):
+            raise TypeError("Coordinates must be int or float.")
+
+        inside_left, inside_top, inside_right, inside_bottom = inside_box
+        outside_left, outside_top, outside_right, outside_bottom = outside_box
 
         return (
-            left1 >= left2 and top1 >= top2 and right1 <= right2 and bottom1 <= bottom2
+            inside_left - inside_box_padding >= outside_left + outside_box_margin
+            and inside_top - inside_box_padding >= outside_top + outside_box_margin
+            and inside_right + inside_box_padding <= outside_right - outside_box_margin
+            and inside_bottom + inside_box_padding
+            <= outside_bottom - outside_box_margin
         )
 
     @staticmethod
@@ -156,20 +173,42 @@ class Scene:
         self._validate_element(element)
         element.position = position
 
-    def move_random(self, element: object, within_bounds: bool = False) -> None:
+    def move_random(
+        self,
+        element: object,
+        constrain_to_artboard: bool = False,
+        artboard_margin: Union[int, float] = 0,
+    ) -> Tuple[Union[int, float], Union[int, float]]:
+        """
+        Moves an element to a random position within the scene.
+
+        Args:
+            element: The element to move.
+            constrain_to_artboard: If True, constrains the element to the artboard boundaries.
+            margin: Margin to apply when constraining to the artboard.
+
+        Returns:
+            The new position of the element (x, y).
+        """
         self._validate_element(element)
-        if within_bounds:
+        if constrain_to_artboard:
+            if artboard_margin * 2 >= self.height or artboard_margin * 2 >= self.width:
+                raise ValueError("Margin is too large for the artboard dimensions.")
             left, top, right, bottom = (
                 element.bounding_box
             )  # left(-x), top(-y), right(+x), bottom(+y)
-            x = random.uniform(-left, self.width - right)
-            y = random.uniform(-top, self.height - bottom)
+            x = random.uniform(
+                -left + artboard_margin, self.width - right - artboard_margin
+            )
+            y = random.uniform(
+                -top + artboard_margin, self.height - bottom - artboard_margin
+            )
         else:
             x = random.uniform(0, self.width)
             y = random.uniform(0, self.height)
 
-        element.x = x
-        element.y = y
+        element.position = (x, y)
+        return (x, y)
 
     def place(self, element: object, position: Tuple[float, float]) -> None:
         self.add_object(element)
@@ -184,9 +223,10 @@ class Scene:
         element: Union[Element, TextElement],
         reference_element: Optional[Union[Element, TextElement]] = None,
         angle: Optional[Union[int, float]] = None,  # degrees
+        jump_over_elements: bool = True,
         minimum_distance: Union[int, float] = 0,  # bounding box
         within_bounds_sctrict: bool = True,
-        jump_over_elements: bool = True,
+        artboard_margin: Union[int, float] = 0,
         max_attempts: Optional[int] = None,
     ) -> None:
         self._validate_element(element)
@@ -221,7 +261,9 @@ class Scene:
             preview_bounding_box = element.calculate_absolute_box(new_position)
 
             if within_bounds_sctrict and not self.is_box_inside(
-                preview_bounding_box, self.artboard_box
+                preview_bounding_box,
+                self.artboard_box,
+                outside_box_margin=artboard_margin,
             ):
                 continue
 
@@ -313,7 +355,7 @@ def main():
     scene.add_object(test_obj3)
 
     for object in scene.elements:
-        scene.move_random(object, False)
+        scene.move_random(object, True, artboard_margin=4)
 
     # Draw the objects
     scene.draw_objects()
