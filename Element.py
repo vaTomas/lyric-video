@@ -107,21 +107,21 @@ class Element:
 
     def _get_bounding_box_coord(self, index: int) -> Optional[Union[int, float]]:
         """Helper function to get a bounding box coordinate by index."""
-        if not self._bounding_box:
+        if not self.bounding_box:
             return None
-        return self._bounding_box[index]
+        return self.bounding_box[index]
 
     def _set_bounding_box_coord(self, index: int, value: Union[int, float]) -> None:
         """Helper function to set a bounding box coordinate by index."""
         self._validate_value(value)
-        if self._bounding_box:
-            new_bounding_box = list(self._bounding_box)
+        if self.bounding_box:
+            new_bounding_box = list(self.bounding_box)
             new_bounding_box[index] = value
-            self._bounding_box = tuple(new_bounding_box)
+            self.bounding_box = tuple(new_bounding_box)
         else:
             new_bounding_box = [None, None, None, None]
             new_bounding_box[index] = value
-            self._bounding_box = tuple(new_bounding_box)
+            self.bounding_box = tuple(new_bounding_box)
         self._fix_bounding_box()
 
     @property
@@ -139,8 +139,6 @@ class Element:
     @top.setter
     def top(self, value: Union[int, float]) -> None:
         self._set_bounding_box_coord(1, value)
-
-    # Add right and bottom properties similarly...
 
     @property
     def right(self) -> Optional[Union[int, float]]:
@@ -183,24 +181,31 @@ class Element:
             Union[int, float],
         ]
     ]:
-        if not self._position:
+        if not self.position:
             return None
 
-        return self._calculate_absolute_box(self._position)
+        return self.calculate_absolute_box(self.position)
 
-    def simulate_absolute_bounding_box(
-        self, position: Tuple[Union[int, float], Union[int, float]]
-    ) -> Optional[
-        Tuple[
-            Union[int, float],
-            Union[int, float],
-            Union[int, float],
-            Union[int, float],
-        ]
-    ]:
-        return self._calculate_absolute_box(position)
+    @property
+    def area(self) -> Optional[Union[int, float]]:
+        """
+        Calculates the area of the bounding box.
 
-    def _calculate_absolute_box(self, position: Tuple[float, float]) -> Optional[
+        Returns:
+            The area of the bounding box, or None if the bounding box is invalid.
+        """
+        if not self.bounding_box:
+            return None
+
+        if any(coord is None for coord in self.bounding_box):
+            return None
+
+        if not all(isinstance(coord, (int, float)) for coord in self.bounding_box):
+            return None
+
+        return (self.right - self.left) * (self.bottom - self.top)
+
+    def calculate_absolute_box(self, position: Tuple[float, float]) -> Optional[
         Tuple[
             Union[int, float],
             Union[int, float],

@@ -1,9 +1,10 @@
 import os
+import math
 import random
 from PIL import Image
 from Element import Element
 from TextElement import TextElement
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 
 class Scene:
@@ -11,7 +12,9 @@ class Scene:
     Represents a scene with a specified width, height, and a list of objects.
     """
 
-    def __init__(self, width: int, height: int, objects: Optional[List[object]] = None):
+    def __init__(
+        self, width: int, height: int, elements: Optional[List[object]] = None
+    ):
         """
         Initializes a Scene object.
 
@@ -22,7 +25,7 @@ class Scene:
         """
         self.width = width
         self.height = height
-        self.objects = objects if objects is not None else []
+        self.elements = elements if elements is not None else []
         self.create_image()
 
     @property
@@ -50,8 +53,14 @@ class Scene:
         self._height = height
 
     @property
-    def bounding_box(self) -> Tuple[int, int]:
+    def artboard_box(self) -> Tuple[int, int]:
         return (0, 0, self.width, self.height)
+
+    def element_index(self, element: Union[Element, TextElement]) -> Optional[int]:
+        try:
+            return self.elements.index(element)
+        except ValueError:
+            return None
 
     @staticmethod
     def is_box_inside(
@@ -132,7 +141,7 @@ class Scene:
             obj: The object to add.
         """
         self._validate_element(element)
-        self.objects.append(element)
+        self.elements.append(element)
 
     def move(self, element: object, position: Tuple[float, float]) -> None:
         self._validate_element(element)
@@ -161,6 +170,77 @@ class Scene:
         self.add_object(element)
         self.move_random(element, within_bounds)
 
+    def move_next(
+        self,
+        element: Union[Element, TextElement],
+        reference_element: Optional[Union[Element, TextElement]] = None,
+        angle: Optional[Union[int, float]] = None,  # degrees
+        minimum_distance: Union[int, float] = 0,  # bounding box
+        within_bounds_sctrict: bool = True,
+        jump_over_elements: bool = True,
+        max_attempts: Optional[int] = None,
+    ) -> None:
+        self._validate_element(element)
+        if reference_element is not None:
+            self._validate_element(reference_element)
+
+        if not reference_element:
+            if not self.elements:
+                raise Exception(
+                    "No objects found in scene to automatically reference from."
+                )
+            reference_element = self.elements[self.element_index(element)-1]
+        
+        if max_attempts is None:
+            max_attempts = int(max(self.height, self.width))
+
+        furthest_distance_incriment = (
+            math.sqrt(self.width**2 + self.height**2) / max_attempts
+        )
+
+        for attempt_number in range(max_attempts):
+            distance = (attempt_number+1) * furthest_distance_incriment
+
+            if angle is None:
+                dx = distance * random.uniform(-1, 1)
+                dy = distance * random.uniform(-1, 1)
+            else:
+                dx = distance * math.cos(math.radians(angle))
+                dy = distance * math.sin(math.radians(angle))
+
+            new_position = (reference_element.x + dx, reference_element.y + dy)
+            preview_bounding_box = element.calculate_absolute_box(new_position)
+
+            if within_bounds_sctrict and not self.is_box_inside(
+                preview_bounding_box, self.artboard_box
+            ):
+                continue
+
+            if self.is_box_touching(
+                preview_bounding_box, reference_element.absolute_bounding_box
+            ):
+                continue
+
+            if jump_over_elements:
+                touching = False
+                for scene_element in self.elements:
+                    if scene_element is element:
+                        continue
+                    if scene_element.position is None or any(coord is None for coord in scene_element.position):
+                        continue
+                    if self.is_box_touching(
+                        preview_bounding_box, scene_element.absolute_bounding_box
+                    ):
+                        touching = True
+                        break
+                if touching:
+                    continue
+
+            element.position = new_position
+            return True
+        
+        return False
+
     def draw_objects(self) -> None:
         """
         Draws all objects in the scene onto the scene's image.
@@ -168,7 +248,7 @@ class Scene:
         if self.image is None:
             raise ValueError("Scene image must be created before drawing objects.")
 
-        for obj in self.objects:
+        for obj in self.elements:
             if not hasattr(obj, "draw") or not callable(obj.draw):
                 raise TypeError(f"Object {obj} does not have a draw method.")
             obj.draw(self.image)
@@ -217,7 +297,7 @@ def main():
     scene.add_object(test_obj2)
     scene.add_object(test_obj3)
 
-    for object in scene.objects:
+    for object in scene.elements:
         scene.move_random(object, False)
 
     # Draw the objects
