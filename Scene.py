@@ -85,7 +85,13 @@ class Scene:
 
     @staticmethod
     def is_box_touching(
-        box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]
+        box1: Tuple[
+            Union[int, float], Union[int, float], Union[int, float], Union[int, float]
+        ],
+        box2: Tuple[
+            Union[int, float], Union[int, float], Union[int, float], Union[int, float]
+        ],
+        minimum_distance: Union[int, float] = 0,
     ) -> bool:
         """
         Checks if box2 is touching box1 in any way (including overlapping).
@@ -101,7 +107,10 @@ class Scene:
         left2, top2, right2, bottom2 = box2
 
         return not (
-            right2 < left1 or right1 < left2 or bottom2 < top1 or bottom1 < top2
+            right2 + minimum_distance < left1
+            or right1 + minimum_distance < left2
+            or bottom2 + minimum_distance < top1
+            or bottom1 + minimum_distance < top2
         )
 
     @staticmethod
@@ -189,8 +198,8 @@ class Scene:
                 raise Exception(
                     "No objects found in scene to automatically reference from."
                 )
-            reference_element = self.elements[self.element_index(element)-1]
-        
+            reference_element = self.elements[self.element_index(element) - 1]
+
         if max_attempts is None:
             max_attempts = int(max(self.height, self.width))
 
@@ -199,7 +208,7 @@ class Scene:
         )
 
         for attempt_number in range(max_attempts):
-            distance = (attempt_number+1) * furthest_distance_incriment
+            distance = (attempt_number + 1) * furthest_distance_incriment
 
             if angle is None:
                 dx = distance * random.uniform(-1, 1)
@@ -217,7 +226,9 @@ class Scene:
                 continue
 
             if self.is_box_touching(
-                preview_bounding_box, reference_element.absolute_bounding_box
+                preview_bounding_box,
+                reference_element.absolute_bounding_box,
+                minimum_distance,
             ):
                 continue
 
@@ -226,10 +237,14 @@ class Scene:
                 for scene_element in self.elements:
                     if scene_element is element:
                         continue
-                    if scene_element.position is None or any(coord is None for coord in scene_element.position):
+                    if scene_element.position is None or any(
+                        coord is None for coord in scene_element.position
+                    ):
                         continue
                     if self.is_box_touching(
-                        preview_bounding_box, scene_element.absolute_bounding_box
+                        preview_bounding_box,
+                        scene_element.absolute_bounding_box,
+                        minimum_distance,
                     ):
                         touching = True
                         break
@@ -238,7 +253,7 @@ class Scene:
 
             element.position = new_position
             return True
-        
+
         return False
 
     def draw_objects(self) -> None:
