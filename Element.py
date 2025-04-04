@@ -269,11 +269,56 @@ class Element:
             raise TypeError("Angle must be an int, float, or None.")
         self._angle = angle % (2 * math.pi)
 
+    @property
+    def vertecies(
+        self,
+    ) -> Optional[
+        Tuple[
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+        ]
+    ]:
+        left, top, right, bottom = self.bounding_box
+        angle = self.angle
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
 
-def main():
+        vertecies = (
+            (left, top),
+            (right, top),
+            (right, bottom),
+            (left, bottom),
+        )
+        rotated_vertecies = []
+        for x, y in vertecies:
+            new_x = x * cos_a - y * sin_a
+            new_y = x * sin_a + y * cos_a
+            rotated_vertecies.append((new_x, new_y))
+        return tuple(rotated_vertecies)
+
+    @property
+    def absolute_vertecies(
+        self,
+    ) -> Optional[
+        Tuple[
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+            Tuple[Union[int, float], Union[int, float]],
+        ]
+    ]:
+        px, py = self.position
+        vertecies = self.vertecies
+        absolute_vertecies = []
+        for vx, vy in vertecies:
+            absolute_vertecies.append((vx + px, vy + py))
+        return tuple(absolute_vertecies)
+
+
+def __test_angle_normalization(item_count=5):
     import random
-
-    item_count = 5
 
     angles = []
     for _ in range(item_count):
@@ -286,14 +331,45 @@ def main():
         element_angles.append(element.angle)
     print(element_angles)
 
-    if all(
+    result = all(
         element_angle >= 0 or element_angle <= 2 * math.pi
         for element_angle in element_angles
-    ):
-        print(True)
-    else:
-        print(False)
+    )
+    print(f"Test | Angle Normalization: {result}")
+    return result
+
+
+def __test_element_vertecies(item_count=5, children=1, size=100):
+    import random
+    from PIL import Image, ImageDraw
+
+    def generate_random_tuple(num_elements, min_val, max_val):
+        return tuple(random.uniform(min_val, max_val) for _ in range(num_elements))
+
+    elements = []
+    for _ in range(item_count):
+        position = generate_random_tuple(2, 0, size)
+        box = generate_random_tuple(4, size * -0.1, size * 0.1)
+        for _ in range(children):
+            angle = random.uniform(0, 2 * math.pi)
+            elements.append(Element(angle=angle, position=position, bounding_box=box))
+
+    image = Image.new("RGB", (size, size), color="white")
+    draw = ImageDraw.Draw(image)
+    for element in elements:
+        print(element.vertecies)
+        print(element.absolute_vertecies)
+        draw.polygon(element.absolute_vertecies, outline="black")
+        draw.rectangle(element.absolute_bounding_box, outline="red")
+        draw.point(element.position, fill="red")
+    image.show()
+
+
+def __test():
+    item_count = 5
+    __test_element_vertecies(item_count=item_count, children=10, size=1000)
+    # __test_angle_normalization(item_count)
 
 
 if __name__ == "__main__":
-    main()
+    __test()
