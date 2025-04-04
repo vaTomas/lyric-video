@@ -24,16 +24,22 @@ def main():
         (-1, 0, 100, 99),
         (math.pi, 0, 2 * math.pi, math.pi),
         (math.pi**2, -math.pi, math.pi, math.pi**2 - 3 * math.pi),
-        (3/4 * 2 * math.pi, 0, 2 * math.pi, 3/4 * 2 * math.pi),
+        (-math.pi**2, 0, 2 * math.pi, -math.pi**2 + 2 * math.pi * 2),
+        (3 / 4 * 2 * math.pi, 0, 2 * math.pi, 3 / 4 * 2 * math.pi),
     )
 
+    check = True
     for test_parameters in tests:
         value, min, max, answer = test_parameters
         result = normalize_cyclic(value, min, max)
         error_rate = get_error_rate(result, answer)
+        remark = error_rate <= tolerance
         print(
-            f"{error_rate <= tolerance} | {error_rate} | {min} - {max} | Result: {result} | Answer {answer}"
+            f"{remark} | {error_rate} | Min: {min} | Max: {max} | Result: {result} | Answer {answer}"
         )
+        if not remark:
+            check = False
+    print(check)
 
 
 if __name__ == "__main__":

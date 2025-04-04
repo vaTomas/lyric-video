@@ -1,3 +1,4 @@
+import math
 from typing import Tuple, Optional, Union
 
 
@@ -17,6 +18,7 @@ class Element:
                 Union[int, float],
             ]
         ] = None,
+        angle: Optional[Union[int, float]] = None,
     ):
         """
         Initializes an Element object.
@@ -27,6 +29,7 @@ class Element:
         """
         self.position = position
         self.bounding_box = bounding_box
+        self.angle = angle
 
     def __repr__(self) -> str:
         return f"Element(position={self.position}, bounding_box={self._bounding_box})"
@@ -105,13 +108,13 @@ class Element:
         self._bounding_box = box
         self._fix_bounding_box()
 
-    def _get_bounding_box_coord(self, index: int) -> Optional[Union[int, float]]:
+    def _get_bounding_box_edge(self, index: int) -> Optional[Union[int, float]]:
         """Helper function to get a bounding box coordinate by index."""
         if not self.bounding_box:
             return None
         return self.bounding_box[index]
 
-    def _set_bounding_box_coord(self, index: int, value: Union[int, float]) -> None:
+    def _set_bounding_box_edge(self, index: int, value: Union[int, float]) -> None:
         """Helper function to set a bounding box coordinate by index."""
         self._validate_value(value)
         if self.bounding_box:
@@ -126,35 +129,35 @@ class Element:
 
     @property
     def left(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_coord(0)
+        return self._get_bounding_box_edge(0)
 
     @left.setter
     def left(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_coord(0, value)
+        self._set_bounding_box_edge(0, value)
 
     @property
     def top(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_coord(1)
+        return self._get_bounding_box_edge(1)
 
     @top.setter
     def top(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_coord(1, value)
+        self._set_bounding_box_edge(1, value)
 
     @property
     def right(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_coord(2)
+        return self._get_bounding_box_edge(2)
 
     @right.setter
     def right(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_coord(2, value)
+        self._set_bounding_box_edge(2, value)
 
     @property
     def bottom(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_coord(3)
+        return self._get_bounding_box_edge(3)
 
     @bottom.setter
     def bottom(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_coord(3, value)
+        self._set_bounding_box_edge(3, value)
 
     def _fix_bounding_box(self):
         if not self._bounding_box:
@@ -251,3 +254,46 @@ class Element:
             return
         if not isinstance(value, (int, float)):
             raise ValueError("Value must be a float, int, or None")
+
+    @property
+    def angle(self) -> Optional[Union[int, float]]:
+        return self._angle
+
+    @angle.setter
+    def angle(self, angle: Optional[Union[int, float]]) -> None:
+        if angle is None:
+            angle = None
+            return
+
+        if not isinstance(angle, (int, float)):
+            raise TypeError("Angle must be an int, float, or None.")
+        self._angle = angle % (2 * math.pi)
+
+
+def main():
+    import random
+
+    item_count = 5
+
+    angles = []
+    for _ in range(item_count):
+        angles.append(random.uniform(-100, 100))
+    print(angles)
+
+    element_angles = []
+    for angle in angles:
+        element = Element(angle=angle)
+        element_angles.append(element.angle)
+    print(element_angles)
+
+    if all(
+        element_angle >= 0 or element_angle <= 2 * math.pi
+        for element_angle in element_angles
+    ):
+        print(True)
+    else:
+        print(False)
+
+
+if __name__ == "__main__":
+    main()
