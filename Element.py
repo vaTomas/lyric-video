@@ -94,9 +94,9 @@ class Element:
             Union[int, float],
         ],
     ) -> None:
-        # if box is None:
-        #     self._object_box = None
-        #     return
+        if box is None:
+            self._object_box = None
+            return
         self._validate_tuple(box, 4)
         # if (
         #     not isinstance(box, tuple)
