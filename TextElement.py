@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from datetime import timedelta
 from PIL import ImageFont, Image, ImageDraw
 
@@ -16,6 +16,7 @@ class TextElement(Element):
         text: str,
         position: Optional[Tuple[float, float]] = None,
         bounding_box: Optional[Tuple[int, int, int, int]] = None,
+        angle: Union[int, float] = 0,
         padding: Optional[int] = None,
         start: Optional[timedelta] = None,
         end: Optional[timedelta] = None,
@@ -36,7 +37,7 @@ class TextElement(Element):
             end (Optional[timedelta]): The end time of the text element.
             font (Optional[ImageFont.FreeTypeFont]): The font used for the text.
         """
-        super().__init__(position=position, bounding_box=bounding_box)
+        super().__init__(position=position, object_box=bounding_box, angle=angle)
 
         self.text = text
 
@@ -63,7 +64,7 @@ class TextElement(Element):
             f"text={self.text}, "
             f"position={self.position}, "
             f"padding={self.padding}, "
-            f"bounding_box={self._bounding_box}, "
+            f"bounding_box={self._object_box}, "
             f"start={self.start}, "
             f"end={self.end}, "
             f"font={self.font}"
@@ -117,7 +118,7 @@ class TextElement(Element):
             align=self.text_alignment,
         )
 
-        self.bounding_box = (left, top, right, bottom)
+        self.object_box = (left, top, right, bottom)
 
     def draw(self, image: Image.Image) -> None:
         """

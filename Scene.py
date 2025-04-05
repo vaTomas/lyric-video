@@ -258,7 +258,7 @@ class Scene:
                 dy = distance * math.sin(math.radians(angle))
 
             new_position = (reference_element.x + dx, reference_element.y + dy)
-            preview_bounding_box = element.calculate_absolute_box(new_position)
+            preview_bounding_box = element.calculate_absolute_box(new_position, reference_element.bounding_box)
 
             if within_bounds_sctrict and not self.is_box_inside(
                 preview_bounding_box,
@@ -269,7 +269,7 @@ class Scene:
 
             if self.is_box_touching(
                 preview_bounding_box,
-                reference_element.absolute_bounding_box,
+                reference_element.absolute_object_box,
                 minimum_distance,
             ):
                 continue

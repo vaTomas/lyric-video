@@ -10,7 +10,7 @@ class Element:
     def __init__(
         self,
         position: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
-        bounding_box: Optional[
+        object_box: Optional[
             Tuple[
                 Union[int, float],
                 Union[int, float],
@@ -25,14 +25,14 @@ class Element:
 
         Args:
             position (Optional[Tuple[int, int]]): The (x, y) coordinates of the element.
-            bounding_box (Optional[Tuple[int, int, int, int]]): The bounding box coordinates (left, top, right, bottom).
+            object_box (Optional[Tuple[int, int, int, int]]): The bounding box coordinates (left, top, right, bottom).
         """
         self.position = position
-        self.bounding_box = bounding_box
+        self.object_box = object_box
         self.angle = angle
 
     def __repr__(self) -> str:
-        return f"Element(position={self.position}, bounding_box={self._bounding_box})"
+        return f"Element(position={self.position}, object_box={self._object_box})"
 
     @property
     def position(self) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
@@ -74,7 +74,7 @@ class Element:
             self._position = (None, value)
 
     @property
-    def bounding_box(self) -> Optional[
+    def object_box(self) -> Optional[
         Tuple[
             Union[int, float],
             Union[int, float],
@@ -82,10 +82,10 @@ class Element:
             Union[int, float],
         ]
     ]:
-        return self._bounding_box
+        return self._object_box
 
-    @bounding_box.setter
-    def bounding_box(
+    @object_box.setter
+    def object_box(
         self,
         box: Tuple[
             Union[int, float],
@@ -95,7 +95,7 @@ class Element:
         ],
     ) -> None:
         # if box is None:
-        #     self._bounding_box = None
+        #     self._object_box = None
         #     return
         self._validate_tuple(box, 4)
         # if (
@@ -105,65 +105,65 @@ class Element:
         # ):
         #     raise ValueError("Bounding box must be a tuple of four integers.")
 
-        self._bounding_box = box
-        self._fix_bounding_box()
+        self._object_box = box
+        self._fix_object_box()
 
-    def _get_bounding_box_edge(self, index: int) -> Optional[Union[int, float]]:
+    def _get_object_box_edge(self, index: int) -> Optional[Union[int, float]]:
         """Helper function to get a bounding box coordinate by index."""
-        if not self.bounding_box:
+        if not self.object_box:
             return None
-        return self.bounding_box[index]
+        return self.object_box[index]
 
-    def _set_bounding_box_edge(self, index: int, value: Union[int, float]) -> None:
+    def _set_object_box_edge(self, index: int, value: Union[int, float]) -> None:
         """Helper function to set a bounding box coordinate by index."""
         self._validate_value(value)
-        if self.bounding_box:
-            new_bounding_box = list(self.bounding_box)
-            new_bounding_box[index] = value
-            self.bounding_box = tuple(new_bounding_box)
+        if self.object_box:
+            new_object_box = list(self.object_box)
+            new_object_box[index] = value
+            self.object_box = tuple(new_object_box)
         else:
-            new_bounding_box = [None, None, None, None]
-            new_bounding_box[index] = value
-            self.bounding_box = tuple(new_bounding_box)
-        self._fix_bounding_box()
+            new_object_box = [None, None, None, None]
+            new_object_box[index] = value
+            self.object_box = tuple(new_object_box)
+        self._fix_object_box()
 
     @property
     def left(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_edge(0)
+        return self._get_object_box_edge(0)
 
     @left.setter
     def left(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_edge(0, value)
+        self._set_object_box_edge(0, value)
 
     @property
     def top(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_edge(1)
+        return self._get_object_box_edge(1)
 
     @top.setter
     def top(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_edge(1, value)
+        self._set_object_box_edge(1, value)
 
     @property
     def right(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_edge(2)
+        return self._get_object_box_edge(2)
 
     @right.setter
     def right(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_edge(2, value)
+        self._set_object_box_edge(2, value)
 
     @property
     def bottom(self) -> Optional[Union[int, float]]:
-        return self._get_bounding_box_edge(3)
+        return self._get_object_box_edge(3)
 
     @bottom.setter
     def bottom(self, value: Union[int, float]) -> None:
-        self._set_bounding_box_edge(3, value)
+        self._set_object_box_edge(3, value)
 
-    def _fix_bounding_box(self):
-        if not self._bounding_box:
+    def _fix_object_box(self):
+        if not self._object_box:
             return
 
-        left, top, right, bottom = self._bounding_box
+        left, top, right, bottom = self._object_box
 
         if left and right:
             if left > right:
@@ -173,10 +173,10 @@ class Element:
             if top > bottom:
                 top, bottom = bottom, top
 
-        self._bounding_box = (left, top, right, bottom)
+        self._object_box = (left, top, right, bottom)
 
     @property
-    def absolute_bounding_box(self) -> Optional[
+    def absolute_object_box(self) -> Optional[
         Tuple[
             Union[int, float],
             Union[int, float],
@@ -186,8 +186,10 @@ class Element:
     ]:
         if not self.position:
             return None
+        if not self.bounding_box:
+            return None
 
-        return self.calculate_absolute_box(self.position)
+        return self.calculate_absolute_box(self.position, self.object_box)
 
     @property
     def area(self) -> Optional[Union[int, float]]:
@@ -197,18 +199,27 @@ class Element:
         Returns:
             The area of the bounding box, or None if the bounding box is invalid.
         """
-        if not self.bounding_box:
+        if not self.object_box:
             return None
 
-        if any(coord is None for coord in self.bounding_box):
+        if any(coord is None for coord in self.object_box):
             return None
 
-        if not all(isinstance(coord, (int, float)) for coord in self.bounding_box):
+        if not all(isinstance(coord, (int, float)) for coord in self.object_box):
             return None
 
         return (self.right - self.left) * (self.bottom - self.top)
 
-    def calculate_absolute_box(self, position: Tuple[float, float]) -> Optional[
+    def calculate_absolute_box(
+        self,
+        position: Tuple[float, float],
+        box: Tuple[
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+        ],
+    ) -> Optional[
         Tuple[
             Union[int, float],
             Union[int, float],
@@ -216,12 +227,11 @@ class Element:
             Union[int, float],
         ]
     ]:
-        self._validate_tuple(position)
-        if not self._bounding_box:
-            return None
+        self._validate_tuple(position, 2)
+        self._validate_tuple(box, 4)
 
-        left, top, right, bottom = self._bounding_box
         x, y = position
+        left, top, right, bottom = box
 
         return (
             left + x if left is not None else None,
@@ -240,10 +250,10 @@ class Element:
             return  # None is valid
 
         is_tuple = isinstance(value, tuple)
-        has_two_elements = len(value) == members
+        has_n_elements = len(value) == members
         are_numbers = all(isinstance(coord, (int, float)) for coord in value)
 
-        if not (is_tuple and has_two_elements and are_numbers):
+        if not (is_tuple and has_n_elements and are_numbers):
             raise ValueError(
                 f"Position must be a tuple of {members} floats, ints, or None."
             )
@@ -280,7 +290,7 @@ class Element:
             Tuple[Union[int, float], Union[int, float]],
         ]
     ]:
-        left, top, right, bottom = self.bounding_box
+        left, top, right, bottom = self.object_box
         angle = self.angle
         cos_a = math.cos(angle)
         sin_a = math.sin(angle)
@@ -316,6 +326,34 @@ class Element:
             absolute_vertecies.append((vx + px, vy + py))
         return tuple(absolute_vertecies)
 
+    @property
+    def bounding_box(self) -> Optional[
+        Tuple[
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+        ]
+    ]:
+        vertecies = self.vertecies
+        if not vertecies:
+            return None
+
+        horizontals = [vertex[0] for vertex in vertecies]
+        verticals = [vertex[1] for vertex in vertecies]
+
+        return (min(horizontals), min(verticals), max(horizontals), max(verticals))
+
+    @property
+    def absolute_bounding_box(self) -> Optional[
+        Tuple[
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+            Union[int, float],
+        ]
+    ]:
+        return self.calculate_absolute_box(self.position, self.bounding_box)
 
 def __test_angle_normalization(item_count=5):
     import random
@@ -352,22 +390,23 @@ def __test_element_vertecies(item_count=5, children=1, size=100):
         box = generate_random_tuple(4, size * -0.1, size * 0.1)
         for _ in range(children):
             angle = random.uniform(0, 2 * math.pi)
-            elements.append(Element(angle=angle, position=position, bounding_box=box))
+            elements.append(Element(angle=angle, position=position, object_box=box))
 
     image = Image.new("RGB", (size, size), color="white")
     draw = ImageDraw.Draw(image)
     for element in elements:
         print(element.vertecies)
         print(element.absolute_vertecies)
+        draw.rectangle(element.absolute_bounding_box, outline="green")
         draw.polygon(element.absolute_vertecies, outline="black")
-        draw.rectangle(element.absolute_bounding_box, outline="red")
+        draw.rectangle(element.absolute_object_box, outline="red")
         draw.point(element.position, fill="red")
     image.show()
 
 
 def __test():
     item_count = 5
-    __test_element_vertecies(item_count=item_count, children=10, size=1000)
+    __test_element_vertecies(item_count=item_count, children=1, size=1000)
     # __test_angle_normalization(item_count)
 
 
