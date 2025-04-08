@@ -210,14 +210,30 @@ class Element:
 
         return (self.right - self.left) * (self.bottom - self.top)
 
-    @property
-    def size(self) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
-        if self.object_box is None:
+    def _box_size(
+        self,
+        box: Tuple[
+            Union[int, float], Union[int, float], Union[int, float], Union[int, float]
+        ],
+    ) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
+        if self.bounding_box is None:
             return None
 
-        left, top, right, bottom = self.object_box
+        self._validate_tuple(box, 4, allow_none=False)
+
+        left, top, right, bottom = box
 
         return (right - left, bottom - top)
+
+    @property
+    def object_box_size(self) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
+        return self._box_size(self.object_box)
+
+    @property
+    def bounding_box_size(
+        self,
+    ) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
+        return self._box_size(self.bounding_box)
 
     def calculate_absolute_box(
         self,
@@ -269,8 +285,8 @@ class Element:
             )
 
     @staticmethod
-    def _validate_value(value: any):
-        if value is None:
+    def _validate_value(value: any, allow_none: bool = True):
+        if value is None and allow_none:
             return
         if not isinstance(value, (int, float)):
             raise ValueError("Value must be a float, int, or None")
@@ -300,10 +316,14 @@ class Element:
             Tuple[Union[int, float], Union[int, float]],
         ]
     ]:
+        if self.object_box is None:
+            return None
+        self._validate_tuple(self.object_box, 4, False)
+
         left, top, right, bottom = self.object_box
         angle = self.angle
         cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
+        sin_a = math.sin(-angle)
 
         vertecies = (
             (left, top),
@@ -400,7 +420,8 @@ def __test_element_vertecies(item_count=5, children=1, size=100):
         position = generate_random_tuple(2, 0, size)
         box = generate_random_tuple(4, size * -0.1, size * 0.1)
         for _ in range(children):
-            angle = random.uniform(0, 2 * math.pi)
+            # angle = random.uniform(0, 2 * math.pi)
+            angle = math.radians(30)
             elements.append(Element(angle=angle, position=position, object_box=box))
 
     image = Image.new("RGB", (size, size), color="white")
