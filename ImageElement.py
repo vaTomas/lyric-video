@@ -103,7 +103,7 @@ class ImageElement(Element):
         image.paste(_image, paste_pos, _image)
 
 
-def main():
+def _test_image():
     import sys
     import random
     from PIL import ImageDraw, ImageOps
@@ -127,7 +127,7 @@ def main():
         image_path,
         position=(random.uniform(0, canvas_size), random.uniform(0, canvas_size)),
         object_box=(0, -image_size / 2, image_size, image_size / 2),
-        angle=math.radians(random.uniform(-30,30)),
+        angle=math.radians(random.uniform(-30, 30)),
     )
     print(sys.getsizeof(image_element))
     print(sys.getsizeof(image))
@@ -143,4 +143,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _test_image()

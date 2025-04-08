@@ -224,6 +224,7 @@ class Scene:
         reference_element: Optional[Union[Element, TextElement]] = None,
         angle: Optional[Union[int, float]] = None,  # degrees
         jump_over_elements: bool = True,
+        additional_elements: Optional[Union[Element, TextElement]] = None,
         minimum_distance: Union[int, float] = 0,  # bounding box
         within_bounds_sctrict: bool = True,
         artboard_margin: Union[int, float] = 0,
@@ -275,8 +276,12 @@ class Scene:
                 continue
 
             if jump_over_elements:
+                elements = self.elements
+                if additional_elements is not None:
+                    elements.extend(additional_elements)
+
                 touching = False
-                for scene_element in self.elements:
+                for scene_element in elements:
                     if scene_element is element:
                         continue
                     if scene_element.position is None or any(
