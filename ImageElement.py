@@ -77,20 +77,30 @@ class ImageElement(Element):
 
     def draw(self, image: Image) -> None:
         if self.image is None:
-            return
-
-        self._validate_tuple(value=self.size, members=2, allow_none=False)
-
-        size = tuple(int(dimension) for dimension in self.size)
+            raise ValueError("Image not set.")
 
         _image = ImageOps.exif_transpose(self.image).convert("RGBA")
+
+        # Resize
+        self._validate_tuple(value=self.object_box_size, members=2, allow_none=False)
+        size = tuple(round(dimension) for dimension in self.object_box_size)
         _image = _image.resize(size=size, resample=Image.Resampling.LANCZOS)
+
+        # Rotate
+        self._validate_value(self.angle, allow_none=False)
         _image = _image.rotate(
-            math.degrees(self.angle), expand=True, resample=Image.Resampling.BICUBIC
+            math.degrees(self.angle),
+            expand=True,
+            resample=Image.Resampling.BICUBIC,
         )
 
-        self._validate_tuple(value=self.position, members=2, allow_none=False)
-        image.paste(_image, self.position, _image)
+        # Paste
+        self._validate_tuple(
+            value=self.absolute_bounding_box, members=4, allow_none=False
+        )
+        box_left, box_top, _, _ = self.absolute_bounding_box
+        paste_pos = (round(box_left), round(box_top))
+        image.paste(_image, paste_pos, _image)
 
 
 def main():
@@ -100,7 +110,7 @@ def main():
 
     canvas_size = 1000
     image_path = "test/image1.jpg"
-    image_size = 500
+    image_size = 200
 
     image = Image.new("RGBA", (canvas_size, canvas_size), color="white")
     draw = ImageDraw.Draw(image)
@@ -111,12 +121,13 @@ def main():
     # img = img.resize((image_size, image_size)).convert("RGBA")
     # img = img.rotate(rotation_angle, expand=True, resample=Image.Resampling.BICUBIC)
     # img.show()
+    image.paste
 
     image_element = ImageElement(
         image_path,
-        position=(100, 100),
-        object_box=(0, 0, image_size / 2, image_size / 2),
-        angle=math.radians(30),
+        position=(random.uniform(0, canvas_size), random.uniform(0, canvas_size)),
+        object_box=(0, -image_size / 2, image_size, image_size / 2),
+        angle=math.radians(random.uniform(-30,30)),
     )
     print(sys.getsizeof(image_element))
     print(sys.getsizeof(image))
@@ -124,6 +135,10 @@ def main():
     # image.paste(image_element.image, image_element.position)
     # print(sys.getsizeof(image_element))
     # print(sys.getsizeof(image))
+    # draw.ellipse((100 - 5, 100 - 5, 100 + 5, 100 + 5), fill="red")
+    draw.rectangle(image_element.absolute_bounding_box, outline="green")
+    draw.rectangle(image_element.absolute_object_box, outline="red")
+    draw.polygon(image_element.absolute_vertecies, outline="black")
     image.show()
 
 
