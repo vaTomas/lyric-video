@@ -1,6 +1,7 @@
 import os
+import math
+from PIL import Image, ImageOps
 from typing import Tuple, Optional, Union
-from PIL import Image
 
 from Element import Element
 
@@ -15,7 +16,7 @@ class ImageElement(Element):
         self,
         image_path: Optional[str] = None,
         position: Optional[Tuple[Union[int, float], Union[int, float]]] = None,
-        bounding_box: Optional[
+        object_box: Optional[
             Tuple[
                 Union[int, float],
                 Union[int, float],
@@ -26,7 +27,7 @@ class ImageElement(Element):
         angle: Union[int, float] = 0,
         image: Image = None,
     ):
-        super().__init__(position=position, object_box=bounding_box, angle=angle)
+        super().__init__(position=position, object_box=object_box, angle=angle)
 
         self._image_path = None
         self._image = None
@@ -74,24 +75,57 @@ class ImageElement(Element):
         if self.object_box is None:
             self.object_box = image.getbbox()
 
+    def draw(self, image: Image) -> None:
+        if self.image is None:
+            return
+
+        self._validate_tuple(value=self.size, members=2, allow_none=False)
+
+        size = tuple(int(dimension) for dimension in self.size)
+
+        _image = ImageOps.exif_transpose(self.image).convert("RGBA")
+        _image = _image.resize(size=size, resample=Image.Resampling.LANCZOS)
+        _image = _image.rotate(
+            math.degrees(self.angle), expand=True, resample=Image.Resampling.BICUBIC
+        )
+
+        self._validate_tuple(value=self.position, members=2, allow_none=False)
+        image.paste(_image, self.position, _image)
+
 
 def main():
     import sys
-    from PIL import ImageDraw
+    import random
+    from PIL import ImageDraw, ImageOps
 
-    size = 1000
+    canvas_size = 1000
+    image_path = "test/image1.jpg"
+    image_size = 500
 
-    image = Image.new("RGB", (size, size), color="white")
+    image = Image.new("RGBA", (canvas_size, canvas_size), color="white")
     draw = ImageDraw.Draw(image)
 
-    image_element = ImageElement(image_path='test/image1.jpg', position=(100,100))
+    # rotation_angle = 30
+    # img = Image.open(image_path)
+    # img = ImageOps.exif_transpose(img)
+    # img = img.resize((image_size, image_size)).convert("RGBA")
+    # img = img.rotate(rotation_angle, expand=True, resample=Image.Resampling.BICUBIC)
+    # img.show()
+
+    image_element = ImageElement(
+        image_path,
+        position=(100, 100),
+        object_box=(0, 0, image_size / 2, image_size / 2),
+        angle=math.radians(30),
+    )
     print(sys.getsizeof(image_element))
     print(sys.getsizeof(image))
-    image.paste(image_element.image,image_element.position)
-    print(sys.getsizeof(image_element))
-    print(sys.getsizeof(image))
+    image_element.draw(image)
+    # image.paste(image_element.image, image_element.position)
+    # print(sys.getsizeof(image_element))
+    # print(sys.getsizeof(image))
     image.show()
-    
+
 
 if __name__ == "__main__":
     main()

@@ -210,6 +210,15 @@ class Element:
 
         return (self.right - self.left) * (self.bottom - self.top)
 
+    @property
+    def size(self) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
+        if self.object_box is None:
+            return None
+
+        left, top, right, bottom = self.object_box
+
+        return (right - left, bottom - top)
+
     def calculate_absolute_box(
         self,
         position: Tuple[float, float],
@@ -244,9 +253,10 @@ class Element:
     def _validate_tuple(
         value: any,
         members: int = 2,
+        allow_none: bool = True,
     ) -> None:
-        """Validates if the position is a tuple of two numbers or None."""
-        if value is None:
+        """Validates if the value is a tuple of two numbers or None."""
+        if value is None and allow_none:
             return  # None is valid
 
         is_tuple = isinstance(value, tuple)
@@ -255,7 +265,7 @@ class Element:
 
         if not (is_tuple and has_n_elements and are_numbers):
             raise ValueError(
-                f"Position must be a tuple of {members} floats, ints, or None."
+                f"Value must be a tuple of {members} floats, ints, or None."
             )
 
     @staticmethod
@@ -354,6 +364,7 @@ class Element:
         ]
     ]:
         return self.calculate_absolute_box(self.position, self.bounding_box)
+
 
 def __test_angle_normalization(item_count=5):
     import random
