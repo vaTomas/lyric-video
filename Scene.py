@@ -4,6 +4,7 @@ import random
 from PIL import Image
 from Element import Element
 from TextElement import TextElement
+from ImageElement import ImageElement
 from typing import List, Optional, Tuple, Union
 
 
@@ -13,7 +14,10 @@ class Scene:
     """
 
     def __init__(
-        self, width: int, height: int, elements: Optional[List[object]] = None
+        self,
+        width: int,
+        height: int,
+        elements: Optional[List[object]] = None,
     ):
         """
         Initializes a Scene object.
@@ -26,7 +30,6 @@ class Scene:
         self.width = width
         self.height = height
         self.elements = elements if elements is not None else []
-        self.create_image()
 
     @property
     def width(self) -> int:
@@ -120,6 +123,11 @@ class Scene:
         Returns:
             True if box2 touches box1, False otherwise.
         """
+        if not all(
+            isinstance(coord, (int, float)) for box in (box1, box2) for coord in box
+        ):
+            raise TypeError("Coordinates must be int or float.")
+
         left1, top1, right1, bottom1 = box1
         left2, top2, right2, bottom2 = box2
 
@@ -132,12 +140,12 @@ class Scene:
 
     @staticmethod
     def _validate_element(element: object) -> None:
-        if not isinstance(element, (Element, TextElement)):
+        if not isinstance(element, (Element, TextElement, ImageElement)):
             raise TypeError("Object must be an Element or a subclass of Element.")
 
     def create_image(
         self,
-        mode: str = "RGB",
+        mode: str = "RGBA",
         color: str = "white",
         width: Optional[int] = None,
         height: Optional[int] = None,
@@ -178,62 +186,122 @@ class Scene:
         element: object,
         constrain_to_artboard: bool = False,
         artboard_margin: Union[int, float] = 0,
-    ) -> Tuple[Union[int, float], Union[int, float]]:
+        collision: bool = False,
+        scene_elements: Optional[
+            List[Union["Element", "TextElement", "ImageElement"]]
+        ] = None,
+        minimum_distance: Optional[Union[int, float]] = None,
+        max_attempts: Union[int, float] = 100,
+    ) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
         """
         Moves an element to a random position within the scene.
 
         Args:
             element: The element to move.
             constrain_to_artboard: If True, constrains the element to the artboard boundaries.
-            margin: Margin to apply when constraining to the artboard.
+            artboard_margin: Margin to apply when constraining to the artboard.
+            collision: If True, ensures that the new position does not collide with other elements.
+            scene_elements: A list of scene elements to check for collisions; if None, uses self.elements.
+            minimum_distance: The minimum allowed distance between elements when checking for collisions.
+            max_attempts: Maximum number of attempts to find a valid position.
 
         Returns:
-            The new position of the element (x, y).
+            The new position of the element (x, y) if found, otherwise None.
         """
         self._validate_element(element)
-        if constrain_to_artboard:
-            if artboard_margin * 2 >= self.height or artboard_margin * 2 >= self.width:
-                raise ValueError("Margin is too large for the artboard dimensions.")
-            left, top, right, bottom = (
-                element.bounding_box
-            )  # left(-x), top(-y), right(+x), bottom(+y)
-            x = random.uniform(
-                -left + artboard_margin, self.width - right - artboard_margin
-            )
-            y = random.uniform(
-                -top + artboard_margin, self.height - bottom - artboard_margin
-            )
-        else:
-            x = random.uniform(0, self.width)
-            y = random.uniform(0, self.height)
 
-        element.position = (x, y)
-        return (x, y)
+        for _ in range(int(max_attempts)):
+            if constrain_to_artboard:
+                if (artboard_margin * 2) >= self.height or (
+                    artboard_margin * 2
+                ) >= self.width:
+                    raise ValueError("Margin is too large for the artboard dimensions.")
+                left, top, right, bottom = (
+                    element.bounding_box
+                )  # (left, top, right, bottom)
+                x = random.uniform(
+                    -left + artboard_margin, self.width - right - artboard_margin
+                )
+                y = random.uniform(
+                    -top + artboard_margin, self.height - bottom - artboard_margin
+                )
+            else:
+                x = random.uniform(0, self.width)
+                y = random.uniform(0, self.height)
+
+            if not collision:
+                element.position = (x, y)
+                return (x, y)
+
+            if scene_elements is None:
+                scene_elements = self.elements
+
+            if minimum_distance is None:
+                minimum_distance = 0
+
+            collided = False
+            for scene_element in scene_elements:
+                if scene_element is element:
+                    continue
+                if self.is_box_touching(
+                    element.calculate_absolute_box((x, y), element.bounding_box),
+                    scene_element.absolute_bounding_box,
+                    minimum_distance,
+                ):
+                    collided = True
+                    break
+
+            if not collided:
+                element.position = (x, y)
+                return (x, y)
+
+        return None
 
     def place(self, element: object, position: Tuple[float, float]) -> None:
         self.add_object(element)
         self.move(element, position)
 
-    def place_random(self, element: object, within_bounds: bool = False) -> None:
+    def place_random(
+        self,
+        element: object,
+        constrain_to_artboard: bool = False,
+        artboard_margin: Union[int, float] = 0,
+        collision: bool = False,
+        scene_elements: Optional[
+            List[Union[Element, TextElement, ImageElement]]
+        ] = None,
+        minimum_distance: Optional[Union[int, float]] = None,
+        max_attempts: Optional[Union[int, float]] = 100,
+    ) -> None:
         self.add_object(element)
-        self.move_random(element, within_bounds)
+        self.move_random(
+            element,
+            constrain_to_artboard,
+            artboard_margin,
+            collision,
+            scene_elements,
+            minimum_distance,
+            max_attempts,
+        )
 
     def move_next(
         self,
         element: Union[Element, TextElement],
         reference_element: Optional[Union[Element, TextElement]] = None,
         angle: Optional[Union[int, float]] = None,  # degrees
-        jump_over_elements: bool = True,
-        additional_elements: Optional[Union[Element, TextElement]] = None,
+        # additional_elements: Optional[Union[Element, TextElement]] = None,
         minimum_distance: Union[int, float] = 0,  # bounding box
         within_bounds_sctrict: bool = True,
         artboard_margin: Union[int, float] = 0,
         max_attempts: Optional[int] = None,
     ) -> None:
+        """
+        Moves an element next to another element.
+        """
         self._validate_element(element)
+
         if reference_element is not None:
             self._validate_element(reference_element)
-
         if not reference_element:
             if not self.elements:
                 raise Exception(
@@ -259,7 +327,9 @@ class Scene:
                 dy = distance * math.sin(math.radians(angle))
 
             new_position = (reference_element.x + dx, reference_element.y + dy)
-            preview_bounding_box = element.calculate_absolute_box(new_position, reference_element.bounding_box)
+            preview_bounding_box = element.calculate_absolute_box(
+                new_position, element.bounding_box
+            )
 
             if within_bounds_sctrict and not self.is_box_inside(
                 preview_bounding_box,
@@ -275,28 +345,27 @@ class Scene:
             ):
                 continue
 
-            if jump_over_elements:
-                elements = self.elements
-                if additional_elements is not None:
-                    elements.extend(additional_elements)
+            scene_elements = self.elements
+            # if additional_elements is not None:
+            #     elements.extend(additional_elements)
 
-                touching = False
-                for scene_element in elements:
-                    if scene_element is element:
-                        continue
-                    if scene_element.position is None or any(
-                        coord is None for coord in scene_element.position
-                    ):
-                        continue
-                    if self.is_box_touching(
-                        preview_bounding_box,
-                        scene_element.absolute_bounding_box,
-                        minimum_distance,
-                    ):
-                        touching = True
-                        break
-                if touching:
+            touching = False
+            for scene_element in scene_elements:
+                if scene_element is element:
                     continue
+                if scene_element.position is None or any(
+                    coord is None for coord in scene_element.position
+                ):
+                    continue
+                if self.is_box_touching(
+                    preview_bounding_box,
+                    scene_element.absolute_bounding_box,
+                    minimum_distance,
+                ):
+                    touching = True
+                    break
+            if touching:
+                continue
 
             element.position = new_position
             return True
