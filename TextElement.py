@@ -72,6 +72,17 @@ class TextElement(Element):
         )
 
     @property
+    def dict(self) -> dict:
+        data = super().dict
+        data.update({
+            "text": self.text,
+            "start": self.start.seconds * 1000 + self.start.microseconds // 1000,
+            "end": self.end.seconds * 1000 + self.end.microseconds // 1000,
+        })
+
+        return data
+
+    @property
     def font(self) -> ImageFont.FreeTypeFont:
         return self._font
 

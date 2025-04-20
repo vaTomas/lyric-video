@@ -32,6 +32,14 @@ class Scene:
         self.elements = elements if elements is not None else []
 
     @property
+    def dict(self):
+        return {
+            "width": self.width,
+            "height": self.height,
+            "elements": [element.dict for element in self.elements],
+        }
+
+    @property
     def width(self) -> int:
         return self._width
 

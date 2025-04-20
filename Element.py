@@ -32,7 +32,15 @@ class Element:
         self.angle = angle
 
     def __repr__(self) -> str:
-        return f"Element(position={self.position}, object_box={self._object_box})"
+        return f"Element(position={self.position}, object_box={self.object_box}, angle={self.angle})"
+
+    @property
+    def dict(self) -> dict:
+        return {
+            "position": self.position,
+            "object_box": self.object_box,
+            "angle": self.angle,
+        }
 
     @property
     def position(self) -> Optional[Tuple[Union[int, float], Union[int, float]]]:
@@ -423,16 +431,17 @@ def __test_element_vertecies(item_count=5, children=1, size=100):
             # angle = random.uniform(0, 2 * math.pi)
             angle = math.radians(30)
             elements.append(Element(angle=angle, position=position, object_box=box))
-
     image = Image.new("RGB", (size, size), color="white")
     draw = ImageDraw.Draw(image)
     for element in elements:
-        print(element.vertecies)
-        print(element.absolute_vertecies)
+        # print(element.vertecies)
+        # print(element.absolute_vertecies)
+        print(element.dict)
         draw.rectangle(element.absolute_bounding_box, outline="green")
         draw.polygon(element.absolute_vertecies, outline="black")
         draw.rectangle(element.absolute_object_box, outline="red")
         draw.point(element.position, fill="red")
+
     image.show()
 
 

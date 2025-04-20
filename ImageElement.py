@@ -38,6 +38,13 @@ class ImageElement(Element):
             self.image = image
 
     @property
+    def dict(self) -> dict:
+        data = super().dict
+        data.update({"image_path": self.image_path})
+
+        return data
+
+    @property
     def image_path(self):
         return self._image_path
 
