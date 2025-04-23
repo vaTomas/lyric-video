@@ -283,13 +283,19 @@ class Element:
         if value is None and allow_none:
             return  # None is valid
 
-        is_tuple = isinstance(value, tuple)
-        has_n_elements = len(value) == members
-        are_numbers = all(isinstance(coord, (int, float)) for coord in value)
-
-        if not (is_tuple and has_n_elements and are_numbers):
+        if not isinstance(value, tuple):
             raise ValueError(
-                f"Value must be a tuple of {members} floats, ints, or None."
+                f"Value must be a tuple."
+            )
+        
+        if not (len(value) == members):
+            raise ValueError(
+                f"Value must be a tuple a length of {members}."
+            )
+
+        if not (all(isinstance(coord, (int, float)) for coord in value)):
+            raise ValueError(
+                f"Value must be a tuple of floats, ints, or None."
             )
 
     @staticmethod
