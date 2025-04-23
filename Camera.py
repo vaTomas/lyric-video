@@ -1,209 +1,75 @@
 import cv2
 import json
-import time
+import random
 import datetime
 import numpy as np
 from Scene import Scene
 from Element import Element
-from typing import List, Optional, Tuple
+from moviepy import AudioFileClip, VideoClip
 from scipy.interpolate import PchipInterpolator
-from moviepy import ImageSequenceClip, AudioFileClip, VideoClip, CompositeAudioClip, ImageClip
-from moviepy.video.fx import Crop
 
 
-def interpolate_keyframes_cubic(
-    keyframes: List[Tuple[float, float]],
-    query_times: Optional[np.ndarray] = None,
-    num_query: Optional[int] = None,
-) -> List[Tuple[float, float]]:
-    # sort
-    keyframes = sorted(keyframes, key=lambda tp: tp[0])
-    times = np.array([t for t, _ in keyframes], dtype=float)
-    positions = np.array([p for _, p in keyframes], dtype=float)
-
-    # build a *monotonic* piecewise-cubic interpolator
-    pchip = PchipInterpolator(times, positions)  # :contentReference[oaicite:0]{index=0}
-
-    # query times
-    if query_times is not None:
-        qt = np.asarray(query_times, dtype=float)
-    elif num_query is not None:
-        qt = np.linspace(times[0], times[-1], num_query)
-    else:
-        raise ValueError("Either `query_times` or `num_query` must be provided")
-
-    # evaluate and pack
-    interp_positions = pchip(qt)
-    return list(zip(qt.tolist(), interp_positions.tolist()))
-
-
-def interpolate_keyframes_linear(
-    keyframes: List[Tuple[float, float]],
-    query_times: Optional[np.ndarray] = None,
-    num_query: Optional[int] = None,
-) -> List[Tuple[float, float]]:
+def make_warp_affine_clip(
+    big_image: np.ndarray,
+    keyframes: list,
+    resolution: tuple[int, int],
+    framerate: float,
+    audio_path: str = None,
+):
     """
-    Given a list of (time_ms, position) pairs, perform piecewise *linear*
-    interpolation and return a list of (time, interpolated_position).
-
-    You must supply *either*:
-      - `query_times`: a 1D array of times (in ms) at which to interpolate, OR
-      - `num_query`: an integer count of equally‐spaced samples from first to last time.
+    Returns a MoviePy VideoClip that pans/zooms/rotates around `big_image`
+    according to `keyframes`, using cv2.warpAffine for subpixel transforms.
     """
-    # 1) Sort input by time
-    keyframes = sorted(keyframes, key=lambda tp: tp[0])
-    times = np.array([t for t, _ in keyframes], dtype=float)
-    positions = np.array([p for _, p in keyframes], dtype=float)
+    # Unpack keyframe times and params
+    times = np.array([kf[0] for kf in keyframes], dtype=float)  # in seconds
+    centers = np.array([kf[1] for kf in keyframes], dtype=float)  # [[x,y],...]
+    rots = np.array([kf[2] for kf in keyframes], dtype=float)  # degrees
+    zooms = np.array([kf[3] for kf in keyframes], dtype=float)
 
-    # 2) Determine the times at which we'll sample
-    if query_times is not None:
-        qt = np.asarray(query_times, dtype=float)
-    elif num_query is not None:
-        qt = np.linspace(times[0], times[-1], num_query, dtype=float)
-    else:
-        raise ValueError("Either `query_times` or `num_query` must be provided")
+    # Build smooth, monotonic interpolators
+    fx = PchipInterpolator(times, centers[:, 0])
+    fy = PchipInterpolator(times, centers[:, 1])
+    frot = PchipInterpolator(times, rots)
+    fzoom = PchipInterpolator(times, zooms)
 
-    # 3) Do the linear interpolation
-    #    np.interp will:
-    #      - For qt within [times[0], times[-1]] interpolate linearly
-    #      - For qt < times[0] or qt > times[-1], return positions[0] or positions[-1]
-    interp_positions = np.interp(qt, times, positions)
-
-    # 4) Return paired list
-    return list(zip(qt.tolist(), interp_positions.tolist()))
-
-
-def get_frame(image, viewbox, target_size=None):
-    """
-    Crop out `viewbox` from `image`, then pad/crop the result to `target_size`
-    (height, width). If target_size is None, it just returns the raw crop.
-    """
-    # Round to ints
-    left, top, right, bottom = [int(round(c)) for c in viewbox]
-    frame = image[top:bottom, left:right]
-
-    if target_size is not None:
-        th, tw = target_size
-        fh, fw = frame.shape[:2]
-        if (fh, fw) != (th, tw):
-            # create a black canvas of exactly target_size
-            channels = frame.shape[2] if frame.ndim == 3 else 1
-            shape = (th, tw, channels) if channels > 1 else (th, tw)
-            new = np.zeros(shape, dtype=frame.dtype)
-            # copy in as much as will fit
-            new[: min(th, fh), : min(tw, fw)] = frame[: min(th, fh), : min(tw, fw)]
-            frame = new
-
-    return frame
-
-
-def frame_to_ms(frame, framerate):
-    return frame / framerate * 1000
-
-
-def make_frame_factory(big_image, interpolated_keyframes, box, target_size, framerate):
-    """
-    Returns a function f(t) that returns the RGB frame at time t (in seconds).
-    """
-    times_ms = [kf[0] for kf in interpolated_keyframes]
-    # Precompute the mapping from frame index → viewbox
-    viewboxes = [
-        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
-        for kf in interpolated_keyframes
-    ]
+    w, h = resolution
+    duration = times[-1]
 
     def make_frame(t):
-        # convert time (seconds) → frame index
-        frame_idx = min(int(round(t * framerate)), len(viewboxes) - 1)
+        # 1) sample parameters at time t
+        cx, cy = float(fx(t)), float(fy(t))
+        angle = float(frot(t))  # in degrees
+        zoom = float(fzoom(t))  # zoom >1 == “zoom in”
 
-        # crop & pad to target_size
-        vb = viewboxes[frame_idx]
-        l, top, r, b = [int(round(c)) for c in vb]
-        crop = big_image[top:b, l:r]
+        # 2) build affine matrix via getRotationMatrix2D
+        # start with a rotation+scale about the CENTER of the output image:
+        M = cv2.getRotationMatrix2D((-cx, -cy), angle, zoom)
 
-        # pad if needed
-        th, tw = target_size
-        fh, fw = crop.shape[:2]
-        if (fh, fw) != (th, tw):
-            padded = np.zeros((th, tw, 3), dtype=crop.dtype)
-            padded[:fh, :fw] = crop
-            crop = padded
+        # then shift so that that center-of‐frame point in the source
+        # (which currently maps to (w/2,h/2) after R+S) moves to (cx,cy):
+        M[0, 2] += cx - (w / 2)
+        M[0, 2] = -M[0, 2]
 
-        # BGR→RGB for MoviePy
-        return cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        M[1, 2] += cy - (h / 2)
+        M[1, 2] = -M[1, 2]
 
-    return make_frame
-
-def make_frame_factory_warpAffine(big_image, interpolated_keyframes, box, target_size, framerate):
-    """
-    Returns a function f(t) that returns the RGB frame at time t (in seconds),
-    using cv2.warpAffine for smooth, subpixel translation.
-    """
-    # Precompute the viewboxes (as floats)
-    viewboxes = [
-        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
-        for kf in interpolated_keyframes
-    ]
-    duration = interpolated_keyframes[-1][0] / 1000.0
-    th, tw = target_size
-
-    def make_frame(t):
-        # frame index from time
-        idx = min(int(round(t * framerate)), len(viewboxes) - 1)
-        left, top, right, bottom = viewboxes[idx]
-
-        # build affine matrix to translate (left,top) → (0,0)
-        M = np.array([[1, 0, -left],
-                      [0, 1, -top]], dtype=np.float32)
-
-        # warp the entire big_image into a (tw × th) window
+        # 3) warp
         out = cv2.warpAffine(
-            big_image, M, (tw, th),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REFLECT
+            big_image, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT
         )
-        # BGR→RGB
+
+        # 4) BGR→RGB for MoviePy
         return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
 
-    return make_frame
+    clip = VideoClip(make_frame, duration=duration)
+    clip = clip.with_fps(framerate)
 
+    if audio_path:
+        audio = AudioFileClip(audio_path).with_duration(duration)
+        clip = clip.with_audio(audio)
 
+    return clip
 
-def make_frame_factory_remap(big_image, interpolated_keyframes, box, target_size, framerate):
-    """
-    Returns a function f(t) that returns the RGB frame at time t (in seconds),
-    using cv2.remap for arbitrary subpixel crops.
-    """
-    viewboxes = [
-        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
-        for kf in interpolated_keyframes
-    ]
-    duration = interpolated_keyframes[-1][0] / 1000.0
-    th, tw = target_size
-
-    # Precompute base mapping grids
-    xs, ys = np.meshgrid(
-        np.arange(tw, dtype=np.float32),
-        np.arange(th, dtype=np.float32)
-    )
-
-    def make_frame(t):
-        idx = min(int(round(t * framerate)), len(viewboxes) - 1)
-        left, top, right, bottom = viewboxes[idx]
-
-        # shift the base grid by the viewbox offset
-        map_x = xs + left
-        map_y = ys + top
-
-        # remap (bilinear) into a tw×th frame
-        out = cv2.remap(
-            big_image, map_x, map_y,
-            interpolation=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REFLECT
-        )
-        return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
-
-    return make_frame
 
 def main():
     datetime_now = datetime.datetime.now()
@@ -213,15 +79,9 @@ def main():
     output_path = f"test/{datetime_now}_run_output.mp4"
     audio_path = "test/video_audio_extracted.mka"
     target_size = (1080, 1920)  # height, width
-    box = Element(
-        object_box=(
-            -target_size[1] / 2,
-            -target_size[0] / 2,
-            target_size[1] / 2,
-            target_size[0] / 2,
-        )
-    )
-    duration = (3 * 60 + 31) * 1000  # milliseconds
+    resolution = (1920, 1080)
+
+    duration = 3 * 60 + 31  # seconds
     framerate = 60  # frames per second
 
     json_data = None
@@ -239,73 +99,31 @@ def main():
         # keyframes.append((text_element["end"], text_element["position"]))
         keyframes.append(
             (
-                (text_element["end"] + text_element["start"]) / 2,
-                text_element["position"],
+                (text_element["end"] + text_element["start"]) / 2 / 1000,  # time
+                text_element["position"],  # position
+                random.uniform(-3, 3),  # rotation deg
+                random.uniform(0.88, 1.12),  # zoom mult
             )
         )
 
-    keyframes.append((0, scene_text.elements[0]["position"]))
-    keyframes.append((duration, scene_text.elements[-1]["position"]))
+    keyframes.append((0, scene_text.elements[0]["position"], 0, 1))
+    keyframes.append((duration, scene_text.elements[-1]["position"], 0, 0.1))
 
     keyframes = sorted(keyframes, key=lambda tp: tp[0])
-
-    timeframes = np.linspace(0, duration, round((duration / 1000) * framerate))
-
-    interpolated_keyframes = interpolate_keyframes_cubic(
-        keyframes=keyframes, query_times=timeframes
-    )
-
-    # x_keyframes = []
-    # y_keyframes = []
-    # for keyframe in keyframes:
-    #     x_keyframes.append((keyframe[0], keyframe[1][0]))
-    #     y_keyframes.append((keyframe[0], keyframe[1][1]))
-
-    # x_interpolated_keyframes = interpolate_keyframes_linear(
-    #     keyframes=x_keyframes, query_times=timeframes
-    # )
-    # y_interpolated_keyframes = interpolate_keyframes_linear(
-    #     keyframes=y_keyframes, query_times=timeframes
-    # )
-
-    # interpolated_keyframes = []
-    # for i in range(len(x_interpolated_keyframes)):
-    #     interpolated_keyframes.append(
-    #         (
-    #             x_interpolated_keyframes[i][0],
-    #             (x_interpolated_keyframes[i][1], y_interpolated_keyframes[i][1]),
-    #         )
-    #     )
+    # keyframes = keyframes[0:4]
 
     big_image = cv2.imread(image_path)
 
-    # frames = []
-    # for keyframe in interpolated_keyframes:
-    #     vb = box.calculate_absolute_box(tuple(keyframe[1]), box.object_box)
-    #     if target_size is None:
-    #         # determine target size from the first viewbox
-    #         l, t, r, b = [int(round(c)) for c in vb]
-    #         target_size = (b - t, r - l)
-
-    #     frame = get_frame(big_image, vb, target_size)
-
-    #     frame = cv2.cvtColor(
-    #         frame, cv2.COLOR_BGR2RGB
-    #     )  # Channel conversion for ImageSequenceClip
-
-    #     frames.append(frame)
-
-    make_frame = make_frame_factory(
-        big_image, interpolated_keyframes, box, target_size, framerate
+    clip = make_warp_affine_clip(
+        big_image=big_image,
+        keyframes=keyframes,
+        resolution=resolution,
+        framerate=framerate,
+        audio_path=audio_path,
     )
 
-    video_clip = VideoClip(make_frame, duration=duration / 1000)
-    
-    audio_clip = AudioFileClip(audio_path)
+    clip.write_videofile(output_path, fps=framerate)
 
-    new_audioclip = CompositeAudioClip([audio_clip])
-    video_clip.audio = new_audioclip
-    video_clip.write_videofile(output_path, fps=framerate)
 
 if __name__ == "__main__":
     main()
