@@ -1,0 +1,205 @@
+import cv2
+import json
+import time
+import datetime
+import numpy as np
+from Scene import Scene
+from Element import Element
+from typing import List, Optional, Tuple
+from scipy.interpolate import CubicSpline
+from moviepy import ImageSequenceClip, AudioFileClip
+
+
+def interpolate_keyframes(
+    keyframes: list[tuple[float, float]],
+    query_times: np.ndarray = None,
+    num_query: int = None,
+) -> list[tuple[float, float]]:
+    """
+    Given a list of (time_ms, position) pairs, build a natural cubic spline
+    and evaluate it at either:
+      - `query_times`: an array of times (in ms) you supply, OR
+      - `num_query` equally-spaced times between first and last timestamp.
+
+    Returns:
+      A list of (time, interpolated_position) tuples.
+    """
+    # 1) Sort input by time just in case
+    keyframes = sorted(keyframes, key=lambda tp: tp[0])
+    times = np.array([t for t, _ in keyframes], dtype=float)
+    positions = np.array([p for _, p in keyframes], dtype=float)
+
+    # 2) Build the natural cubic spline
+    CubicSpline
+    cs = CubicSpline(times, positions, bc_type="natural")
+
+    # 3) Determine at which times to sample the spline
+    if query_times is not None:
+        qt = np.asarray(query_times, dtype=float)
+    elif num_query is not None:
+        qt = np.linspace(times[0], times[-1], num_query)
+    else:
+        raise ValueError("Either `query_times` or `num_query` must be provided")
+
+    # 4) Evaluate
+    interp_positions = cs(qt)
+
+    # 5) Pack and return
+    return list(zip(qt.tolist(), interp_positions.tolist()))
+
+
+def interpolate_keyframes_linear(
+    keyframes: List[Tuple[float, float]],
+    query_times: Optional[np.ndarray] = None,
+    num_query: Optional[int] = None,
+) -> List[Tuple[float, float]]:
+    """
+    Given a list of (time_ms, position) pairs, perform piecewise *linear*
+    interpolation and return a list of (time, interpolated_position).
+
+    You must supply *either*:
+      - `query_times`: a 1D array of times (in ms) at which to interpolate, OR
+      - `num_query`: an integer count of equally‐spaced samples from first to last time.
+    """
+    # 1) Sort input by time
+    keyframes = sorted(keyframes, key=lambda tp: tp[0])
+    times = np.array([t for t, _ in keyframes], dtype=float)
+    positions = np.array([p for _, p in keyframes], dtype=float)
+
+    # 2) Determine the times at which we'll sample
+    if query_times is not None:
+        qt = np.asarray(query_times, dtype=float)
+    elif num_query is not None:
+        qt = np.linspace(times[0], times[-1], num_query, dtype=float)
+    else:
+        raise ValueError("Either `query_times` or `num_query` must be provided")
+
+    # 3) Do the linear interpolation
+    #    np.interp will:
+    #      - For qt within [times[0], times[-1]] interpolate linearly
+    #      - For qt < times[0] or qt > times[-1], return positions[0] or positions[-1]
+    interp_positions = np.interp(qt, times, positions)
+
+    # 4) Return paired list
+    return list(zip(qt.tolist(), interp_positions.tolist()))
+
+
+def get_frame(image, viewbox, target_size=None):
+    """
+    Crop out `viewbox` from `image`, then pad/crop the result to `target_size`
+    (height, width). If target_size is None, it just returns the raw crop.
+    """
+    # Round to ints
+    left, top, right, bottom = [int(round(c)) for c in viewbox]
+    frame = image[top:bottom, left:right]
+
+    if target_size is not None:
+        th, tw = target_size
+        fh, fw = frame.shape[:2]
+        if (fh, fw) != (th, tw):
+            # create a black canvas of exactly target_size
+            channels = frame.shape[2] if frame.ndim == 3 else 1
+            shape = (th, tw, channels) if channels > 1 else (th, tw)
+            new = np.zeros(shape, dtype=frame.dtype)
+            # copy in as much as will fit
+            new[: min(th, fh), : min(tw, fw)] = frame[: min(th, fh), : min(tw, fw)]
+            frame = new
+
+    return frame
+
+
+def frame_to_ms(frame, framerate):
+    return frame / framerate * 1000
+
+
+def main():
+    datetime_now = datetime.datetime.now()
+    datetime_now = datetime_now.strftime("%Y_%m_%d_%H%M%S")
+    image_path = "test/2025_04_20_003315_run_output.png"
+    json_path = "test/2025_04_20_003315_run_output.json"
+    output_path = f"test/{datetime_now}_run_output.mp4"
+    audio_path = "test/video_audio_extracted.mka"
+    target_size = (1080, 1920)  # height, width
+    box = Element(
+        object_box=(
+            -target_size[1] / 2,
+            -target_size[0] / 2,
+            target_size[1] / 2,
+            target_size[0] / 2,
+        )
+    )
+    duration = (3 * 60 + 31) * 1000  # milliseconds
+    framerate = 24  # frames per second
+
+    json_data = None
+    with open(json_path, "r", encoding="utf-8") as json_file:
+        json_data = json.load(json_file)
+
+    # print(json_data)
+
+    scene_text = Scene(**json_data["scene_text"])
+    scene_images = Scene(**json_data["scene_images"])
+
+    keyframes = []
+    for text_element in scene_text.elements:
+        keyframes.append((text_element["start"], text_element["position"]))
+        keyframes.append((text_element["end"], text_element["position"]))
+
+    keyframes.append((0, scene_text.elements[0]["position"]))
+
+    keyframes = sorted(keyframes, key=lambda tp: tp[0])
+
+    timeframes = np.linspace(0, duration, round((duration / 1000) * framerate))
+
+    # interpolated_keyframes = interpolate_keyframes_linear(
+    #     keyframes=keyframes, query_times=timeframes
+    # )
+
+    x_keyframes = []
+    y_keyframes = []
+    for keyframe in keyframes:
+        x_keyframes.append((keyframe[0], keyframe[1][0]))
+        y_keyframes.append((keyframe[0], keyframe[1][1]))
+
+    x_interpolated_keyframes = interpolate_keyframes_linear(
+        keyframes=x_keyframes, query_times=timeframes
+    )
+    y_interpolated_keyframes = interpolate_keyframes_linear(
+        keyframes=y_keyframes, query_times=timeframes
+    )
+
+    interpolated_keyframes = []
+    for i in range(len(x_interpolated_keyframes)):
+        interpolated_keyframes.append(
+            (
+                x_interpolated_keyframes[i][0],
+                (x_interpolated_keyframes[i][1], y_interpolated_keyframes[i][1]),
+            )
+        )
+
+    big_image = cv2.imread(image_path)
+
+    frames = []
+    for keyframe in interpolated_keyframes:
+        vb = box.calculate_absolute_box(tuple(keyframe[1]), box.object_box)
+        if target_size is None:
+            # determine target size from the first viewbox
+            l, t, r, b = [int(round(c)) for c in vb]
+            target_size = (b - t, r - l)
+
+        frame = get_frame(big_image, vb, target_size)
+
+        frame = cv2.cvtColor(
+            frame, cv2.COLOR_BGR2RGB
+        )  # Channel conversion for ImageSequenceClip
+
+        frames.append(frame)
+
+    clip = ImageSequenceClip(frames, fps=framerate)
+    clip.audio = AudioFileClip(audio_path)
+    # clip.show(t=0.9)
+    clip.write_videofile(output_path, fps=framerate)
+
+
+if __name__ == "__main__":
+    main()
