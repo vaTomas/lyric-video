@@ -6,34 +6,25 @@ import numpy as np
 from Scene import Scene
 from Element import Element
 from typing import List, Optional, Tuple
-from scipy.interpolate import CubicSpline
-from moviepy import ImageSequenceClip, AudioFileClip
+from scipy.interpolate import PchipInterpolator
+from moviepy import ImageSequenceClip, AudioFileClip, VideoClip, CompositeAudioClip, ImageClip
+from moviepy.video.fx import Crop
 
 
-def interpolate_keyframes(
-    keyframes: list[tuple[float, float]],
-    query_times: np.ndarray = None,
-    num_query: int = None,
-) -> list[tuple[float, float]]:
-    """
-    Given a list of (time_ms, position) pairs, build a natural cubic spline
-    and evaluate it at either:
-      - `query_times`: an array of times (in ms) you supply, OR
-      - `num_query` equally-spaced times between first and last timestamp.
-
-    Returns:
-      A list of (time, interpolated_position) tuples.
-    """
-    # 1) Sort input by time just in case
+def interpolate_keyframes_cubic(
+    keyframes: List[Tuple[float, float]],
+    query_times: Optional[np.ndarray] = None,
+    num_query: Optional[int] = None,
+) -> List[Tuple[float, float]]:
+    # sort
     keyframes = sorted(keyframes, key=lambda tp: tp[0])
     times = np.array([t for t, _ in keyframes], dtype=float)
     positions = np.array([p for _, p in keyframes], dtype=float)
 
-    # 2) Build the natural cubic spline
-    CubicSpline
-    cs = CubicSpline(times, positions, bc_type="natural")
+    # build a *monotonic* piecewise-cubic interpolator
+    pchip = PchipInterpolator(times, positions)  # :contentReference[oaicite:0]{index=0}
 
-    # 3) Determine at which times to sample the spline
+    # query times
     if query_times is not None:
         qt = np.asarray(query_times, dtype=float)
     elif num_query is not None:
@@ -41,10 +32,8 @@ def interpolate_keyframes(
     else:
         raise ValueError("Either `query_times` or `num_query` must be provided")
 
-    # 4) Evaluate
-    interp_positions = cs(qt)
-
-    # 5) Pack and return
+    # evaluate and pack
+    interp_positions = pchip(qt)
     return list(zip(qt.tolist(), interp_positions.tolist()))
 
 
@@ -112,6 +101,40 @@ def frame_to_ms(frame, framerate):
     return frame / framerate * 1000
 
 
+def make_frame_factory(big_image, interpolated_keyframes, box, target_size, framerate):
+    """
+    Returns a function f(t) that returns the RGB frame at time t (in seconds).
+    """
+    times_ms = [kf[0] for kf in interpolated_keyframes]
+    # Precompute the mapping from frame index → viewbox
+    viewboxes = [
+        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
+        for kf in interpolated_keyframes
+    ]
+
+    def make_frame(t):
+        # convert time (seconds) → frame index
+        frame_idx = min(int(round(t * framerate)), len(viewboxes) - 1)
+
+        # crop & pad to target_size
+        vb = viewboxes[frame_idx]
+        l, top, r, b = [int(round(c)) for c in vb]
+        crop = big_image[top:b, l:r]
+
+        # pad if needed
+        th, tw = target_size
+        fh, fw = crop.shape[:2]
+        if (fh, fw) != (th, tw):
+            padded = np.zeros((th, tw, 3), dtype=crop.dtype)
+            padded[:fh, :fw] = crop
+            crop = padded
+
+        # BGR→RGB for MoviePy
+        return cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+
+    return make_frame
+
+
 def main():
     datetime_now = datetime.datetime.now()
     datetime_now = datetime_now.strftime("%Y_%m_%d_%H%M%S")
@@ -142,64 +165,77 @@ def main():
 
     keyframes = []
     for text_element in scene_text.elements:
-        keyframes.append((text_element["start"], text_element["position"]))
-        keyframes.append((text_element["end"], text_element["position"]))
+        # keyframes.append((text_element["start"], text_element["position"]))
+        # keyframes.append((text_element["end"], text_element["position"]))
+        keyframes.append(
+            (
+                (text_element["end"] + text_element["start"]) / 2,
+                text_element["position"],
+            )
+        )
 
     keyframes.append((0, scene_text.elements[0]["position"]))
+    keyframes.append((duration, scene_text.elements[-1]["position"]))
 
     keyframes = sorted(keyframes, key=lambda tp: tp[0])
 
     timeframes = np.linspace(0, duration, round((duration / 1000) * framerate))
 
-    # interpolated_keyframes = interpolate_keyframes_linear(
-    #     keyframes=keyframes, query_times=timeframes
+    interpolated_keyframes = interpolate_keyframes_cubic(
+        keyframes=keyframes, query_times=timeframes
+    )
+
+    # x_keyframes = []
+    # y_keyframes = []
+    # for keyframe in keyframes:
+    #     x_keyframes.append((keyframe[0], keyframe[1][0]))
+    #     y_keyframes.append((keyframe[0], keyframe[1][1]))
+
+    # x_interpolated_keyframes = interpolate_keyframes_linear(
+    #     keyframes=x_keyframes, query_times=timeframes
+    # )
+    # y_interpolated_keyframes = interpolate_keyframes_linear(
+    #     keyframes=y_keyframes, query_times=timeframes
     # )
 
-    x_keyframes = []
-    y_keyframes = []
-    for keyframe in keyframes:
-        x_keyframes.append((keyframe[0], keyframe[1][0]))
-        y_keyframes.append((keyframe[0], keyframe[1][1]))
-
-    x_interpolated_keyframes = interpolate_keyframes_linear(
-        keyframes=x_keyframes, query_times=timeframes
-    )
-    y_interpolated_keyframes = interpolate_keyframes_linear(
-        keyframes=y_keyframes, query_times=timeframes
-    )
-
-    interpolated_keyframes = []
-    for i in range(len(x_interpolated_keyframes)):
-        interpolated_keyframes.append(
-            (
-                x_interpolated_keyframes[i][0],
-                (x_interpolated_keyframes[i][1], y_interpolated_keyframes[i][1]),
-            )
-        )
+    # interpolated_keyframes = []
+    # for i in range(len(x_interpolated_keyframes)):
+    #     interpolated_keyframes.append(
+    #         (
+    #             x_interpolated_keyframes[i][0],
+    #             (x_interpolated_keyframes[i][1], y_interpolated_keyframes[i][1]),
+    #         )
+    #     )
 
     big_image = cv2.imread(image_path)
 
-    frames = []
-    for keyframe in interpolated_keyframes:
-        vb = box.calculate_absolute_box(tuple(keyframe[1]), box.object_box)
-        if target_size is None:
-            # determine target size from the first viewbox
-            l, t, r, b = [int(round(c)) for c in vb]
-            target_size = (b - t, r - l)
+    # frames = []
+    # for keyframe in interpolated_keyframes:
+    #     vb = box.calculate_absolute_box(tuple(keyframe[1]), box.object_box)
+    #     if target_size is None:
+    #         # determine target size from the first viewbox
+    #         l, t, r, b = [int(round(c)) for c in vb]
+    #         target_size = (b - t, r - l)
 
-        frame = get_frame(big_image, vb, target_size)
+    #     frame = get_frame(big_image, vb, target_size)
 
-        frame = cv2.cvtColor(
-            frame, cv2.COLOR_BGR2RGB
-        )  # Channel conversion for ImageSequenceClip
+    #     frame = cv2.cvtColor(
+    #         frame, cv2.COLOR_BGR2RGB
+    #     )  # Channel conversion for ImageSequenceClip
 
-        frames.append(frame)
+    #     frames.append(frame)
 
-    clip = ImageSequenceClip(frames, fps=framerate)
-    clip.audio = AudioFileClip(audio_path)
-    # clip.show(t=0.9)
-    clip.write_videofile(output_path, fps=framerate)
+    make_frame = make_frame_factory(
+        big_image, interpolated_keyframes, box, target_size, framerate
+    )
 
+    video_clip = VideoClip(make_frame, duration=duration / 1000)
+    
+    audio_clip = AudioFileClip(audio_path)
+
+    new_audioclip = CompositeAudioClip([audio_clip])
+    video_clip.audio = new_audioclip
+    video_clip.write_videofile(output_path, fps=framerate)
 
 if __name__ == "__main__":
     main()
