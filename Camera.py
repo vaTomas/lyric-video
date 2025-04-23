@@ -134,6 +134,76 @@ def make_frame_factory(big_image, interpolated_keyframes, box, target_size, fram
 
     return make_frame
 
+def make_frame_factory_warpAffine(big_image, interpolated_keyframes, box, target_size, framerate):
+    """
+    Returns a function f(t) that returns the RGB frame at time t (in seconds),
+    using cv2.warpAffine for smooth, subpixel translation.
+    """
+    # Precompute the viewboxes (as floats)
+    viewboxes = [
+        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
+        for kf in interpolated_keyframes
+    ]
+    duration = interpolated_keyframes[-1][0] / 1000.0
+    th, tw = target_size
+
+    def make_frame(t):
+        # frame index from time
+        idx = min(int(round(t * framerate)), len(viewboxes) - 1)
+        left, top, right, bottom = viewboxes[idx]
+
+        # build affine matrix to translate (left,top) → (0,0)
+        M = np.array([[1, 0, -left],
+                      [0, 1, -top]], dtype=np.float32)
+
+        # warp the entire big_image into a (tw × th) window
+        out = cv2.warpAffine(
+            big_image, M, (tw, th),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT
+        )
+        # BGR→RGB
+        return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+
+    return make_frame
+
+
+
+def make_frame_factory_remap(big_image, interpolated_keyframes, box, target_size, framerate):
+    """
+    Returns a function f(t) that returns the RGB frame at time t (in seconds),
+    using cv2.remap for arbitrary subpixel crops.
+    """
+    viewboxes = [
+        box.calculate_absolute_box(tuple(kf[1]), box.object_box)
+        for kf in interpolated_keyframes
+    ]
+    duration = interpolated_keyframes[-1][0] / 1000.0
+    th, tw = target_size
+
+    # Precompute base mapping grids
+    xs, ys = np.meshgrid(
+        np.arange(tw, dtype=np.float32),
+        np.arange(th, dtype=np.float32)
+    )
+
+    def make_frame(t):
+        idx = min(int(round(t * framerate)), len(viewboxes) - 1)
+        left, top, right, bottom = viewboxes[idx]
+
+        # shift the base grid by the viewbox offset
+        map_x = xs + left
+        map_y = ys + top
+
+        # remap (bilinear) into a tw×th frame
+        out = cv2.remap(
+            big_image, map_x, map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT
+        )
+        return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+
+    return make_frame
 
 def main():
     datetime_now = datetime.datetime.now()
@@ -152,7 +222,7 @@ def main():
         )
     )
     duration = (3 * 60 + 31) * 1000  # milliseconds
-    framerate = 24  # frames per second
+    framerate = 60  # frames per second
 
     json_data = None
     with open(json_path, "r", encoding="utf-8") as json_file:
