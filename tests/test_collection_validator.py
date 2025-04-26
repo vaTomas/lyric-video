@@ -1,7 +1,6 @@
 import pytest
 from collection_validator import validate_collection, ValidationError
 
-
 @pytest.mark.parametrize(
     "value,collection_type,element_count,element_types",
     [
