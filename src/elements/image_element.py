@@ -3,7 +3,7 @@ import math
 from PIL import Image, ImageOps
 from typing import Tuple, Optional, Union
 
-from Element import Element
+from .element import Element
 
 
 class ImageElement(Element):

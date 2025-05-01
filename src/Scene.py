@@ -2,10 +2,8 @@ import os
 import math
 import random
 from PIL import Image
-from Element import Element
-from TextElement import TextElement
-from ImageElement import ImageElement
 from typing import List, Optional, Tuple, Union
+from elements import Element, TextElement, ImageElement
 
 
 class Scene:

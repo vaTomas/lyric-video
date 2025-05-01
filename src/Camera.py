@@ -3,10 +3,48 @@ import json
 import random
 import datetime
 import numpy as np
+from typing import Tuple
 from Scene import Scene
-from Element import Element
+from elements import Element
 from moviepy import AudioFileClip, VideoClip
 from scipy.interpolate import PchipInterpolator
+from Keyframe import Keyframe
+
+
+class Camera:
+    @property
+    def resolution(self) -> Tuple[int, int]:
+        return self._resolution
+    
+    @resolution.setter
+    def resolution(self, r: Tuple[int, int]) -> None:
+        if not len(r) == 2:
+            raise ValueError
+        
+        for coord in r:    
+            if not isinstance(coord, int):
+                raise TypeError
+            
+        self._resolution = r
+
+    @property
+    def position_keyframes(self):
+        return self._position_keyframes
+    
+    @position_keyframes.setter
+    def position_keyframes(self, keyframes):
+        for keyframe in keyframes:
+            if not isinstance(keyframe, Keyframe):
+                raise TypeError
+            
+            if not len(keyframe.position) == 2:
+                raise ValueError
+            
+            if not isinstance(keyframe.time, int):
+                raise TypeError
+            
+            
+
 
 
 def make_warp_affine_clip(
@@ -106,13 +144,31 @@ def main():
             )
         )
 
-    keyframes.append((0, scene_text.elements[0]["position"], 0, 1))
-    keyframes.append((duration, scene_text.elements[-1]["position"], 0, 0.1))
+    big_image = cv2.imread(image_path)
+    image_size = big_image.shape[:2]  # height, width
+
+    keyframes.append(
+        (
+            0,
+            (
+                scene_text.elements[0]["position"][0] - resolution[0],
+                scene_text.elements[0]["position"][1],
+            ),
+            0,
+            1.2,
+        )
+    )
+    keyframes.append(
+        (
+            duration,
+            scene_text.elements[-1]["position"],
+            0,
+            max(resolution) / min(image_size),
+        )
+    )
 
     keyframes = sorted(keyframes, key=lambda tp: tp[0])
     # keyframes = keyframes[0:4]
-
-    big_image = cv2.imread(image_path)
 
     clip = make_warp_affine_clip(
         big_image=big_image,

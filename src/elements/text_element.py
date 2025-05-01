@@ -2,7 +2,7 @@ from typing import Tuple, Optional, Union
 from datetime import timedelta
 from PIL import ImageFont, Image, ImageDraw
 
-from Element import Element
+from .element import Element
 
 
 class TextElement(Element):

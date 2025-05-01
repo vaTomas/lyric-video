@@ -3,7 +3,7 @@ import srt
 import random
 import subprocess
 from typing import List, Tuple, Optional
-from subtitle import get_subtitles as get_subtitles
+from subtitle.subtitle import get_subtitles as get_subtitles
 from audio import extract_audio as extract_audio
 
 
