@@ -1,5 +1,7 @@
+import numpy as np
 from .keyframe import Keyframe
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, Callable
+from scipy.interpolate import PchipInterpolator
 from collection_validator import validate_collection
 
 
@@ -129,15 +131,20 @@ class Camera:
         position: Optional[Tuple[Union[float, int], Union[float, int]]],
         angle: Optional[Union[float, int]],
         zoom: Optional[Union[float, int]],
+        sort_keyframes: bool = True,
     ):
         if position is not None:
-            self.add_position_keyframe(time=time, position=position)
+            self.add_position_keyframe(
+                time=time, position=position, sort_keyframes=sort_keyframes
+            )
 
         if angle is not None:
-            self.add_rotation_keyframe(time=time, angle=angle)
+            self.add_rotation_keyframe(
+                time=time, angle=angle, sort_keyframes=sort_keyframes
+            )
 
         if zoom is not None:
-            self.add_zoom_keyframe(time=time, zoom=zoom)
+            self.add_zoom_keyframe(time=time, zoom=zoom, sort_keyframes=sort_keyframes)
 
     def sort_keyframes(self) -> None:
         self._position_keyframes.sort(key=lambda keyframe: keyframe.time)
@@ -183,3 +190,50 @@ class Camera:
             keyframes.sort(key=lambda keyframe: keyframe.time)
 
         return keyframe
+
+    def _make_interpolator(
+        self,
+        keyframes: list[Keyframe],
+        default: Union[float, Tuple[float, float]],
+        axis: Optional[int] = None,
+    ) -> Callable[[float], Union[float, Tuple[float, float]]]:
+        """
+        Build and return a PchipInterpolator on this keyframe track.
+
+        - track:      list of Keyframe(time:float, value:float or (x,y))
+        - default:    what to return outside the keyframe range
+        - axis:       if the value is vector (x,y), set axis=0 so interp on each component
+        """
+        if not keyframes:
+            return lambda t: default
+
+        keyframes.sort(key=lambda keyframe: keyframe.time)
+        times = np.array([keyframe.time for keyframe in keyframes], dtype=float)
+        values = np.array([keyframe.value for keyframe in keyframes], dtype=float)
+
+        interpolator = PchipInterpolator(times, values, axis=axis, extrapolate=True)
+
+        def f(t: float):
+            t = float(t)
+            if t <= times[0]:
+                return values[0].tolist() if axis is not None else float(values[0])
+            if t >= times[-1]:
+                return values[-1].tolist() if axis is not None else float(values[-1])
+            v = interpolator(t)
+            return tuple(v.tolist()) if axis is not None else float(v)
+
+        return f
+
+    def get_position_fn(self) -> Callable[[float], Tuple[float, float]]:
+        """Returns f(t) → (x,y) at time t (seconds)."""
+        return self._make_interpolator(
+            self._position_keyframes, default=(0.0, 0.0), axis=0
+        )
+
+    def get_rotation_fn(self) -> Callable[[float], float]:
+        """Returns f(t) → angle (deg) at time t."""
+        return self._make_interpolator(self._rotation_keyframes, default=0.0, axis=None)
+
+    def get_zoom_fn(self) -> Callable[[float], float]:
+        """Returns f(t) → zoom factor at time t."""
+        return self._make_interpolator(self._zoom_keyframes, default=1.0, axis=None)
