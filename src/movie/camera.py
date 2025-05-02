@@ -194,24 +194,27 @@ class Camera:
     def _make_interpolator(
         self,
         keyframes: list[Keyframe],
-        default: Union[float, Tuple[float, float]],
+        default_output: Union[float, Tuple[float, float]],
         axis: Optional[int] = None,
     ) -> Callable[[float], Union[float, Tuple[float, float]]]:
         """
         Build and return a PchipInterpolator on this keyframe track.
 
-        - track:      list of Keyframe(time:float, value:float or (x,y))
-        - default:    what to return outside the keyframe range
-        - axis:       if the value is vector (x,y), set axis=0 so interp on each component
+        - keyframes:        list of Keyframe(time:float, value:float or (x,y))
+        - default_output:   what to return outside the keyframe range
+        - axis:             if the value is vector (x,y), set axis=0 so interp on each component
         """
         if not keyframes:
-            return lambda t: default
+            return lambda t: default_output
 
         keyframes.sort(key=lambda keyframe: keyframe.time)
         times = np.array([keyframe.time for keyframe in keyframes], dtype=float)
         values = np.array([keyframe.value for keyframe in keyframes], dtype=float)
 
-        interpolator = PchipInterpolator(times, values, axis=axis, extrapolate=True)
+        if axis is None:
+            interpolator = PchipInterpolator(times, values, extrapolate=True)
+        else:
+            interpolator = PchipInterpolator(times, values, axis=axis, extrapolate=True)
 
         def f(t: float):
             t = float(t)
@@ -227,13 +230,44 @@ class Camera:
     def get_position_fn(self) -> Callable[[float], Tuple[float, float]]:
         """Returns f(t) → (x,y) at time t (seconds)."""
         return self._make_interpolator(
-            self._position_keyframes, default=(0.0, 0.0), axis=0
+            self._position_keyframes, default_output=(0.0, 0.0), axis=0
         )
 
     def get_rotation_fn(self) -> Callable[[float], float]:
-        """Returns f(t) → angle (deg) at time t."""
-        return self._make_interpolator(self._rotation_keyframes, default=0.0, axis=None)
+        """
+        Returns f(t) → angle (deg) at time t, interpolated via unit‐circle (cos, sin)
+        so that angles wrap smoothly across 0°/360° boundaries.
+        """
+        keyframes = self._rotation_keyframes
+        if not keyframes:
+            return lambda t: 0.0
+
+        keyframes.sort(key=lambda k: k.time)
+        times = np.array([kf.time for kf in keyframes], dtype=float)
+        angles = np.array([kf.value for kf in keyframes], dtype=float)
+
+        xs = np.cos(np.deg2rad(angles))
+        ys = np.sin(np.deg2rad(angles))
+
+        interp_x = PchipInterpolator(times, xs, extrapolate=True)
+        interp_y = PchipInterpolator(times, ys, extrapolate=True)
+
+        def f(t: float) -> float:
+            t = float(t)
+            if t <= times[0]:
+                x, y = xs[0], ys[0]
+            elif t >= times[-1]:
+                x, y = xs[-1], ys[-1]
+            else:
+                x, y = float(interp_x(t)), float(interp_y(t))
+
+            ang = np.rad2deg(np.arctan2(y, x))
+            return float(ang % 360)
+
+        return f
 
     def get_zoom_fn(self) -> Callable[[float], float]:
         """Returns f(t) → zoom factor at time t."""
-        return self._make_interpolator(self._zoom_keyframes, default=1.0, axis=None)
+        return self._make_interpolator(
+            self._zoom_keyframes, default_output=1.0, axis=None
+        )
