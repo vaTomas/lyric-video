@@ -218,10 +218,10 @@ class Camera:
 
         def f(t: float):
             t = float(t)
-            if t <= times[0]:
-                return values[0].tolist() if axis is not None else float(values[0])
-            if t >= times[-1]:
-                return values[-1].tolist() if axis is not None else float(values[-1])
+            # if t <= times[0]:
+            #     return values[0].tolist() if axis is not None else float(values[0])
+            # if t >= times[-1]:
+            #     return values[-1].tolist() if axis is not None else float(values[-1])
             v = interpolator(t)
             return tuple(v.tolist()) if axis is not None else float(v)
 

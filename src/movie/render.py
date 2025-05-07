@@ -2,12 +2,11 @@ import cv2
 import numpy as np
 from moviepy import AudioFileClip, VideoClip
 from scipy.interpolate import PchipInterpolator
+from .camera import Camera
 
-
-def make_warp_affine_clip(
+def render(
     big_image: np.ndarray,
-    keyframes: list,
-    resolution: tuple[int, int],
+    camera: Camera,
     framerate: float,
     audio_path: str = None,
 ):
@@ -16,25 +15,17 @@ def make_warp_affine_clip(
     according to `keyframes`, using cv2.warpAffine for subpixel transforms.
     """
     # Unpack keyframe times and params
-    times = np.array([kf[0] for kf in keyframes], dtype=float)  # in seconds
-    centers = np.array([kf[1] for kf in keyframes], dtype=float)  # [[x,y],...]
-    rots = np.array([kf[2] for kf in keyframes], dtype=float)  # degrees
-    zooms = np.array([kf[3] for kf in keyframes], dtype=float)
 
     # Build smooth, monotonic interpolators
-    fx = PchipInterpolator(times, centers[:, 0])
-    fy = PchipInterpolator(times, centers[:, 1])
-    frot = PchipInterpolator(times, rots)
-    fzoom = PchipInterpolator(times, zooms)
 
-    w, h = resolution
-    duration = times[-1]
+    w, h = camera.resolution
+    duration = camera.position_keyframes[-1].time
 
     def make_frame(t):
         # 1) sample parameters at time t
-        cx, cy = float(fx(t)), float(fy(t))
-        angle = float(frot(t))  # in degrees
-        zoom = float(fzoom(t))  # zoom >1 == “zoom in”
+        cx, cy = camera.get_position(t)
+        angle = camera.get_angle(t)  # in degrees
+        zoom = camera.get_zoom(t)  # zoom >1 == “zoom in”
 
         # 2) build affine matrix via getRotationMatrix2D
         # start with a rotation+scale about the CENTER of the output image:
