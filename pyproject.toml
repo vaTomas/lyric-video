@@ -1,0 +1,16 @@
+[project]
+name = "lyric_video"
+version = "0.0.1"
+description = "Creates lyric videos from images, audio, and subtitle files."
+license = { file = "LICENSE" }
+readme = "README.md"
+dependencies = [
+    "pillow >= 10.4.0",
+    "pytest >= 8.3.5",
+    "python-dateutil >= 2.8.2",
+    "srt >= 3.5.3",
+    "opencv-python >= 4.11.0.86",
+    "numpy >= 1.26.4",
+    "moviepy >= 2.1.2",
+    "scipy >= 1.12.0",
+]
