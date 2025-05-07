@@ -6,37 +6,10 @@ from collection_validator import validate_collection
 
 
 class Camera:
-    def __init__(self, resolution: tuple[int, int]):
-        self.resolution = resolution
-
+    def __init__(self):
         self._position_keyframes = []
         self._zoom_keyframes = []
         self._rotation_keyframes = []
-
-    @property
-    def resolution(self) -> Tuple[int, int]:
-        """
-        Returns a tuple representation of the camera resolution (Width, Height)
-        """
-        return self._resolution
-
-    @resolution.setter
-    def resolution(self, r: Tuple[int, int]) -> None:
-        """
-        (Width, Height)
-        """
-        validate_collection(
-            value=r,
-            collection_type=tuple,
-            element_count=2,
-            element_types=int,
-        )
-
-        for dim in r:
-            if dim < 0:
-                raise ValueError("Resolution must be a positive intiger.")
-
-        self._resolution = r
 
     @property
     def position_keyframes(self):

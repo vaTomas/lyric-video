@@ -7,6 +7,7 @@ from .camera import Camera
 def render(
     big_image: np.ndarray,
     camera: Camera,
+    resolution: tuple[int, int],
     framerate: float,
     audio_path: str = None,
 ):
@@ -18,7 +19,7 @@ def render(
 
     # Build smooth, monotonic interpolators
 
-    w, h = camera.resolution
+    w, h = resolution
     duration = camera.position_keyframes[-1].time
 
     def make_frame(t):
