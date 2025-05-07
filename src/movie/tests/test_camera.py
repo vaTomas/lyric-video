@@ -41,12 +41,9 @@ def test_add_rotation_and_zoom_keyframes_and_modulo():
 def test_get_interpolators_default_and_interpolation():
     cam = Camera((50, 50))
     # No keyframes -> defaults
-    fx = cam.get_position_fn()
-    fr = cam.get_rotation_fn()
-    fz = cam.get_zoom_fn()
-    assert fx(0) == (0.0, 0.0)
-    assert fr(0) == pytest.approx(0.0)
-    assert fz(0) == pytest.approx(1.0)
+    assert cam.get_position(0) == (0.0, 0.0)
+    assert cam.get_angle(0) == pytest.approx(0.0)
+    assert cam.get_zoom(0) == pytest.approx(1.0)
 
     # Add linear keyframes
     cam.add_position_keyframe(0.0, (0, 0))
@@ -56,19 +53,20 @@ def test_get_interpolators_default_and_interpolation():
     cam.add_zoom_keyframe(0.0, 1.0)
     cam.add_zoom_keyframe(2.0, 3.0)
 
-    fx = cam.get_position_fn()
-    fr = cam.get_rotation_fn()
-    fz = cam.get_zoom_fn()
+    # Remake interpolators
+    cam.make_position_interpolator()
+    cam.make_rotation_interpolator()
+    cam.make_zoom_interpolator()
 
-    # # Midpoint t=1.0 should interpolate to (2,4), rotation ~45, zoom ~2
-    # pos_mid = fx(1.0)
-    # rot_mid = fr(1.0)
-    # zoom_mid = fz(1.0)
+    # Midpoint t=1.0 should interpolate to (2,4), rotation ~45, zoom ~2
+    pos_mid = cam.get_position(1.0)
+    rot_mid = cam.get_angle(1.0)
+    zoom_mid = cam.get_zoom(1.0)
 
-    # assert pos_mid[0] == pytest.approx(2.0)
-    # assert pos_mid[1] == pytest.approx(4.0)
-    # assert rot_mid == pytest.approx(45.0)
-    # assert zoom_mid == pytest.approx(2.0)
+    assert pos_mid[0] == pytest.approx(2.0)
+    assert pos_mid[1] == pytest.approx(4.0)
+    assert rot_mid == pytest.approx(45.0)
+    assert zoom_mid == pytest.approx(2.0)
 
 
 def test_invalid_resolution():

@@ -227,47 +227,53 @@ class Camera:
 
         return f
 
-    def get_position_fn(self) -> Callable[[float], Tuple[float, float]]:
-        """Returns f(t) → (x,y) at time t (seconds)."""
-        return self._make_interpolator(
-            self._position_keyframes, default_output=(0.0, 0.0), axis=0
+    def make_position_interpolator(self) -> None:
+        self._position_fn = self._make_interpolator(
+            self._position_keyframes,
+            default_output=(0.0, 0.0),
+            axis=0,
         )
 
-    def get_rotation_fn(self) -> Callable[[float], float]:
-        """
-        Returns f(t) → angle (deg) at time t, interpolated via unit‐circle (cos, sin)
-        so that angles wrap smoothly across 0°/360° boundaries.
-        """
-        keyframes = self._rotation_keyframes
-        if not keyframes:
-            return lambda t: 0.0
+    def get_position(self, t: float) -> Tuple[float, float]:
+        if not hasattr(self, "_position_fn"):
+            self.make_position_interpolator()
+        return self._position_fn(t)
 
-        keyframes.sort(key=lambda k: k.time)
-        times = np.array([kf.time for kf in keyframes], dtype=float)
-        angles = np.array([kf.value for kf in keyframes], dtype=float)
+    def make_rotation_interpolator(self) -> None:
+        # Build an (x,y) track from your angle keyframes for uniform rotation
+        xy_keyframes = []
+        for kf in self._rotation_keyframes:
+            θ_rad = np.deg2rad(kf.value)
+            x = np.cos(θ_rad)
+            y = np.sin(θ_rad)
+            xy_keyframes.append(Keyframe(time=kf.time, value=(x, y)))
 
-        xs = np.cos(np.deg2rad(angles))
-        ys = np.sin(np.deg2rad(angles))
-
-        interp_x = PchipInterpolator(times, xs, extrapolate=True)
-        interp_y = PchipInterpolator(times, ys, extrapolate=True)
+        # Default unit‐vector at 0° is (1,0)
+        f_xy = self._make_interpolator(
+            keyframes=xy_keyframes, default_output=(1.0, 0.0), axis=0
+        )
 
         def f(t: float) -> float:
-            t = float(t)
-            if t <= times[0]:
-                x, y = xs[0], ys[0]
-            elif t >= times[-1]:
-                x, y = xs[-1], ys[-1]
-            else:
-                x, y = float(interp_x(t)), float(interp_y(t))
+            x, y = f_xy(t)
+            # atan2(y,x) → radians in [-π,π], convert to [0,360)
+            ang = np.rad2deg(np.arctan2(y, x)) % 360
+            return float(ang)
 
-            ang = np.rad2deg(np.arctan2(y, x))
-            return float(ang % 360)
+        self._angle_fn = f
 
-        return f
+    def get_angle(self, t: float) -> float:
+        if not hasattr(self, "_angle_fn"):
+            self.make_rotation_interpolator()
+        return self._angle_fn(t)
 
-    def get_zoom_fn(self) -> Callable[[float], float]:
-        """Returns f(t) → zoom factor at time t."""
-        return self._make_interpolator(
-            self._zoom_keyframes, default_output=1.0, axis=None
+    def make_zoom_interpolator(self) -> None:
+        self._zoom_fn = self._make_interpolator(
+            self._zoom_keyframes,
+            default_output=1.0,
+            axis=None,
         )
+
+    def get_zoom(self, t: float) -> float:
+        if not hasattr(self, "_zoom_fn"):
+            self.make_zoom_interpolator()
+        return self._zoom_fn(t)
